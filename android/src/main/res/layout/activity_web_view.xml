@@ -8,10 +8,12 @@
     android:clickable="true"
     android:focusableInTouchMode="true"
     tools:context=".InAppBrowser.InAppBrowserActivity"
+    android:forceHasOverlappingRendering="false"
     android:focusable="true">
 
     <com.pichillilorenzo.flutter_inappwebview.InAppWebView.InAppWebView
         android:id="@+id/webView"
+        android:forceHasOverlappingRendering="false"
         android:layout_width="match_parent"
         android:layout_height="match_parent" />
 
