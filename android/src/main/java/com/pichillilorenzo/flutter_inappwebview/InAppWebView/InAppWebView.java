@@ -673,7 +673,7 @@ final public class InAppWebView extends InputAwareWebView {
 
     if (options.useOnDownloadStart)
       setDownloadListener(new DownloadStartListener());
-
+    
     WebSettings settings = getSettings();
 
     settings.setJavaScriptEnabled(options.javaScriptEnabled);
@@ -774,10 +774,7 @@ final public class InAppWebView extends InputAwareWebView {
     settings.setSaveFormData(options.saveFormData);
     if (options.incognito)
       setIncognito(true);
-    if (options.hardwareAcceleration)
-      setLayerType(View.LAYER_TYPE_HARDWARE, null);
-    else
-      setLayerType(View.LAYER_TYPE_SOFTWARE, null);
+    setLayerType(View.LAYER_TYPE_SOFTWARE, null);
     if (options.regexToCancelSubFramesLoading != null) {
       regexToCancelSubFramesLoadingCompiled = Pattern.compile(options.regexToCancelSubFramesLoading);
     }
