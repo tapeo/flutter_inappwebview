@@ -278,6 +278,29 @@ public class InAppWebView: WKWebView, WKUIDelegate,
             
             if settings.incognito {
                 configuration.websiteDataStore = WKWebsiteDataStore.nonPersistent()
+            } else if let profileId = settings.profileId, !profileId.isEmpty {
+                // Use profile-specific data store (iOS 17.0+/macOS 14.0+)
+                if #available(macOS 14.0, *) {
+                    // Try to parse as UUID, if that fails, create a UUID from the string hash
+                    let uuid: UUID
+                    if let parsedUuid = UUID(uuidString: profileId) {
+                        uuid = parsedUuid
+                    } else {
+                        // Create a deterministic UUID from the string
+                        uuid = UUID(uuidString: String(format: "%08x-%04x-%04x-%04x-%012x", 
+                                                     profileId.hashValue,
+                                                     0x1000 | (profileId.hashValue & 0x0fff),
+                                                     0x8000 | (profileId.hashValue & 0x3fff),
+                                                     profileId.hashValue & 0xffff,
+                                                     profileId.hashValue)) ?? UUID()
+                    }
+                    configuration.websiteDataStore = WKWebsiteDataStore(forIdentifier: uuid)
+                } else {
+                    // Fallback to default behavior for older versions
+                    if settings.cacheEnabled {
+                        configuration.websiteDataStore = WKWebsiteDataStore.default()
+                    }
+                }
             } else if settings.cacheEnabled {
                 configuration.websiteDataStore = WKWebsiteDataStore.default()
             }
@@ -300,8 +323,8 @@ public class InAppWebView: WKWebView, WKUIDelegate,
                     // https://stackoverflow.com/questions/26573137/can-i-set-the-cookies-to-be-used-by-a-wkwebview/26577303#26577303
                     // Set Cookies in iOS 11 and above, initialize websiteDataStore before setting cookies
                     // See also https://forums.developer.apple.com/thread/97194
-                    // check if websiteDataStore has not been initialized before
-                    if(!settings.incognito && !settings.cacheEnabled) {
+                    // check if websiteDataStore has not been initialized before (exclude profile and incognito cases)
+                    if(!settings.incognito && !settings.cacheEnabled && (settings.profileId?.isEmpty ?? true)) {
                         configuration.websiteDataStore = WKWebsiteDataStore.nonPersistent()
                     }
                     for cookie in HTTPCookieStorage.shared.cookies ?? [] {
@@ -577,9 +600,42 @@ public class InAppWebView: WKWebView, WKUIDelegate,
             configuration.websiteDataStore = WKWebsiteDataStore.default()
         }
         
+        // Handle profile changes
+        if newSettingsMap["profileId"] != nil && settings?.profileId != newSettings.profileId {
+            if let profileId = newSettings.profileId, !profileId.isEmpty && !newSettings.incognito {
+                if #available(macOS 14.0, *) {
+                    // Try to parse as UUID, if that fails, create a UUID from the string hash
+                    let uuid: UUID
+                    if let parsedUuid = UUID(uuidString: profileId) {
+                        uuid = parsedUuid
+                    } else {
+                        // Create a deterministic UUID from the string
+                        uuid = UUID(uuidString: String(format: "%08x-%04x-%04x-%04x-%012x", 
+                                                     profileId.hashValue,
+                                                     0x1000 | (profileId.hashValue & 0x0fff),
+                                                     0x8000 | (profileId.hashValue & 0x3fff),
+                                                     profileId.hashValue & 0xffff,
+                                                     profileId.hashValue)) ?? UUID()
+                    }
+                    configuration.websiteDataStore = WKWebsiteDataStore(forIdentifier: uuid)
+                } else {
+                    // Fallback to default behavior for older versions when profile not available
+                    if newSettings.cacheEnabled {
+                        configuration.websiteDataStore = WKWebsiteDataStore.default()
+                    }
+                }
+            } else if !newSettings.incognito {
+                // When profileId is null/empty, use default cache behavior
+                if newSettings.cacheEnabled {
+                    configuration.websiteDataStore = WKWebsiteDataStore.default()
+                }
+                // If cacheEnabled is false and not incognito, we don't set a data store (uses default)
+            }
+        }
+        
         if #available(macOS 10.13, *) {
             if (newSettingsMap["sharedCookiesEnabled"] != nil && settings?.sharedCookiesEnabled != newSettings.sharedCookiesEnabled && newSettings.sharedCookiesEnabled) {
-                if(!newSettings.incognito && !newSettings.cacheEnabled) {
+                if(!newSettings.incognito && !newSettings.cacheEnabled && (newSettings.profileId?.isEmpty ?? true)) {
                     configuration.websiteDataStore = WKWebsiteDataStore.nonPersistent()
                 }
                 for cookie in HTTPCookieStorage.shared.cookies ?? [] {

@@ -343,6 +343,24 @@ because there isn't any way to make the website data store non-persistent for th
       platforms: [AndroidPlatform(), IOSPlatform(), MacOSPlatform()])
   bool? cacheEnabled;
 
+  ///Specifies a profile identifier string to create separate data stores for different webview contexts.
+  ///When set, creates a persistent WKWebsiteDataStore with the specified identifier,
+  ///allowing multiple webviews to share the same profile or be completely isolated from each other.
+  ///If not specified, uses the default data store.
+  ///
+  ///**NOTE**: Available only on iOS 17.0+ and macOS 14.0+.
+  ///This corresponds to the new WebKit profile API for managing separate data stores.
+  ///
+  ///**IMPORTANT**: Once a WebView is created with a specific profileId,
+  ///changing this setting will have no effect. You must create a new WebView instance.
+  ///
+  ///The default value is `null`.
+  @SupportedPlatforms(platforms: [
+    IOSPlatform(available: "17.0"),
+    MacOSPlatform(available: "14.0")
+  ])
+  String? profileId;
+
   ///Set to `true` to make the background of the WebView transparent. If your app has a dark theme, this can prevent a white flash on initialization. The default value is `false`.
   @SupportedPlatforms(platforms: [
     AndroidPlatform(),
@@ -2013,8 +2031,7 @@ as it can cause framerate drops on animations in Android 9 and lower (see [Hybri
   ///If the [PlatformWebViewCreationParams.onShowFileChooser] event is implemented and this value is `null`,
   ///it will be automatically inferred as `true`, otherwise, the default value is `false`.
   ///This logic will not be applied for [PlatformInAppBrowser], where you must set the value manually.
-  @SupportedPlatforms(
-      platforms: [AndroidPlatform()])
+  @SupportedPlatforms(platforms: [AndroidPlatform()])
   bool? useOnShowFileChooser;
 
   ///Specifies a feature policy for the `<iframe>`.
@@ -2124,6 +2141,7 @@ as it can cause framerate drops on animations in Android 9 and lower (see [Hybri
     this.useShouldInterceptFetchRequest,
     this.incognito = false,
     this.cacheEnabled = true,
+    this.profileId,
     this.transparentBackground = false,
     this.disableVerticalScroll = false,
     this.disableHorizontalScroll = false,

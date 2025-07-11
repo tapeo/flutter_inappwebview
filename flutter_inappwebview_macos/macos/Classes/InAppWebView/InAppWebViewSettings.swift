@@ -64,6 +64,7 @@ public class InAppWebViewSettings: ISettings<InAppWebView> {
     var pluginScriptsOriginAllowList: [String]? = nil
     var pluginScriptsForMainFrameOnly = false
     var alpha: Double? = nil
+    var profileId: String? = nil
     
     override init(){
         super.init()
@@ -76,6 +77,10 @@ public class InAppWebViewSettings: ISettings<InAppWebView> {
         if let alphaValue = settings["alpha"] as? Double {
             alpha = alphaValue
             settings.removeValue(forKey: "alpha")
+        }
+        if let profileIdValue = settings["profileId"] as? String {
+            profileId = profileIdValue
+            settings.removeValue(forKey: "profileId")
         }
         let _ = super.parse(settings: settings)
         if #available(macOS 10.15, *) {} else {
@@ -128,6 +133,7 @@ public class InAppWebViewSettings: ISettings<InAppWebView> {
                 realSettings["shouldPrintBackgrounds"] = configuration.preferences.shouldPrintBackgrounds
             }
         }
+        realSettings["profileId"] = profileId
         return realSettings
     }
 }

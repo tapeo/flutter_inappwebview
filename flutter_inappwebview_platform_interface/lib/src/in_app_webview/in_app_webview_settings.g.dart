@@ -314,6 +314,24 @@ class InAppWebViewSettings {
   ///- MacOS
   bool? cacheEnabled;
 
+  ///Specifies a profile identifier string to create separate data stores for different webview contexts.
+  ///When set, creates a persistent WKWebsiteDataStore with the specified identifier,
+  ///allowing multiple webviews to share the same profile or be completely isolated from each other.
+  ///If not specified, uses the default data store.
+  ///
+  ///**NOTE**: Available only on iOS 17.0+ and macOS 14.0+.
+  ///This corresponds to the new WebKit profile API for managing separate data stores.
+  ///
+  ///**IMPORTANT**: Once a WebView is created with a specific profileId,
+  ///changing this setting will have no effect. You must create a new WebView instance.
+  ///
+  ///The default value is `null`.
+  ///
+  ///**Officially Supported Platforms/Implementations**:
+  ///- iOS 17.0+
+  ///- MacOS 14.0+
+  String? profileId;
+
   ///Overrides the way the cache is used. The way the cache is used is based on the navigation type. For a normal page load, the cache is checked and content is re-validated as needed.
   ///When navigating back, content is not revalidated, instead the content is just retrieved from the cache. The default value is [CacheMode.LOAD_DEFAULT].
   ///
@@ -1618,6 +1636,7 @@ class InAppWebViewSettings {
       this.useShouldInterceptFetchRequest,
       this.incognito = false,
       this.cacheEnabled = true,
+      this.profileId,
       this.transparentBackground = false,
       this.disableVerticalScroll = false,
       this.disableHorizontalScroll = false,
@@ -1954,6 +1973,7 @@ class InAppWebViewSettings {
         map['browserAcceleratorKeysEnabled'];
     instance.builtInZoomControls = map['builtInZoomControls'];
     instance.cacheEnabled = map['cacheEnabled'];
+    instance.profileId = map['profileId'];
     instance.cacheMode = switch (enumMethod ?? EnumMethod.nativeValue) {
       EnumMethod.nativeValue => CacheMode.fromNativeValue(map['cacheMode']),
       EnumMethod.value => CacheMode.fromValue(map['cacheMode']),
@@ -2161,6 +2181,7 @@ class InAppWebViewSettings {
       "browserAcceleratorKeysEnabled": browserAcceleratorKeysEnabled,
       "builtInZoomControls": builtInZoomControls,
       "cacheEnabled": cacheEnabled,
+      "profileId": profileId,
       "cacheMode": switch (enumMethod ?? EnumMethod.nativeValue) {
         EnumMethod.nativeValue => cacheMode?.toNativeValue(),
         EnumMethod.value => cacheMode?.toValue(),
