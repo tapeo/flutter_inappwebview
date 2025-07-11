@@ -826,20 +826,15 @@ public class InAppWebView: WKWebView, WKUIDelegate,
             configuration.userContentController.removeAllContentRuleLists()
             let contentBlockers = newSettings.contentBlockers
             if contentBlockers.count > 0 {
-                do {
-                    let jsonData = try JSONSerialization.data(withJSONObject: contentBlockers, options: [])
-                    let blockRules = String(data: jsonData, encoding: .utf8)
-                    WKContentRuleListStore.default().compileContentRuleList(
-                        forIdentifier: "ContentBlockingRules",
-                        encodedContentRuleList: blockRules) { (contentRuleList, error) in
-                            if let error = error {
-                                print(error.localizedDescription)
-                                return
-                            }
-                            self.configuration.userContentController.add(contentRuleList!)
+                ContentBlockerManager.shared.getOrCompileRuleList(contentBlockers: contentBlockers) { (contentRuleList, error) in
+                    if let error = error {
+                        print("ContentBlocker compilation error: \(error.localizedDescription)")
+                        return
                     }
-                } catch {
-                    print(error.localizedDescription)
+                    
+                    if let contentRuleList = contentRuleList {
+                        self.configuration.userContentController.add(contentRuleList)
+                    }
                 }
             }
         }

@@ -51,6 +51,24 @@ public class InAppWebViewManager: ChannelDelegate {
                 clearAllCache(includeDiskFiles: includeDiskFiles, completionHandler: {
                     result(true)
                 })
+            case "clearContentBlockerCache":
+                if #available(macOS 10.13, *) {
+                    ContentBlockerManager.shared.clearCache()
+                }
+                result(true)
+            case "precompileContentBlockersFromUrls":
+                if #available(macOS 10.13, *) {
+                    let urls = arguments!["urls"] as! [String]
+                    ContentBlockerManager.shared.precompileContentBlockersFromUrls(urls: urls) { (success, error) in
+                        if let error = error {
+                            result(FlutterError(code: "CONTENT_BLOCKER_ERROR", message: error.localizedDescription, details: nil))
+                        } else {
+                            result(success)
+                        }
+                    }
+                } else {
+                    result(false)
+                }
             case "setJavaScriptBridgeName":
                 let bridgeName = arguments!["bridgeName"] as! String
                 JavaScriptBridgeJS.set_JAVASCRIPT_BRIDGE_NAME(bridgeName: bridgeName)

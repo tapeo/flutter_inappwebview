@@ -1,12 +1,9 @@
 import 'dart:collection';
 import 'dart:convert';
 import 'dart:core';
-import 'dart:typed_data';
-import 'dart:ui';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
-
 import 'package:plugin_platform_interface/plugin_platform_interface.dart';
 
 import '../context_menu/main.dart';
@@ -20,7 +17,6 @@ import '../types/main.dart';
 import '../web_message/main.dart';
 import '../web_storage/platform_web_storage.dart';
 import '../web_uri.dart';
-
 import 'in_app_webview_keep_alive.dart';
 import 'in_app_webview_settings.dart';
 import 'platform_headless_in_app_webview.dart';
@@ -523,7 +519,7 @@ abstract class PlatformInAppWebViewController extends PlatformInterface
   ///
   ///[contentWorld], on iOS, it represents the namespace in which to evaluate the JavaScript [source] code.
   ///Instead, on Android, it will run the [source] code into an iframe, using `eval(source);` to get and return the result.
-  ///This parameter doesn’t apply to changes you make to the underlying web content, such as the document’s DOM structure.
+  ///This parameter doesn't apply to changes you make to the underlying web content, such as the document's DOM structure.
   ///Those changes remain visible to all scripts, regardless of which content world you specify.
   ///For more information about content worlds, see [ContentWorld].
   ///Available on iOS 14.0+ and MacOS 11.0+.
@@ -762,7 +758,7 @@ abstract class PlatformInAppWebViewController extends PlatformInterface
   ///{@template flutter_inappwebview_platform_interface.PlatformInAppWebViewController.takeScreenshot}
   ///Takes a screenshot of the WebView's visible viewport and returns a [Uint8List]. Returns `null` if it wasn't be able to take it.
   ///
-  ///[screenshotConfiguration] represents the configuration data to use when generating an image from a web view’s contents.
+  ///[screenshotConfiguration] represents the configuration data to use when generating an image from a web view's contents.
   ///
   ///**NOTE for iOS**: available on iOS 11.0+.
   ///
@@ -1269,7 +1265,7 @@ abstract class PlatformInAppWebViewController extends PlatformInterface
   }
 
   ///{@template flutter_inappwebview_platform_interface.PlatformInAppWebViewController.addUserScript}
-  ///Injects the specified [userScript] into the webpage’s content.
+  ///Injects the specified [userScript] into the webpage's content.
   ///
   ///**NOTE for iOS and MacOS**: this method will throw an error if the [PlatformWebViewCreationParams.windowId] has been set.
   ///There isn't any way to add/remove user scripts specific to window WebViews.
@@ -1287,7 +1283,7 @@ abstract class PlatformInAppWebViewController extends PlatformInterface
   }
 
   ///{@template flutter_inappwebview_platform_interface.PlatformInAppWebViewController.addUserScripts}
-  ///Injects the [userScripts] into the webpage’s content.
+  ///Injects the [userScripts] into the webpage's content.
   ///
   ///**NOTE for iOS and MacOS**: this method will throw an error if the [PlatformWebViewCreationParams.windowId] has been set.
   ///There isn't any way to add/remove user scripts specific to window WebViews.
@@ -1305,7 +1301,7 @@ abstract class PlatformInAppWebViewController extends PlatformInterface
   }
 
   ///{@template flutter_inappwebview_platform_interface.PlatformInAppWebViewController.removeUserScript}
-  ///Removes the specified [userScript] from the webpage’s content.
+  ///Removes the specified [userScript] from the webpage's content.
   ///User scripts already loaded into the webpage's content cannot be removed. This will have effect only on the next page load.
   ///Returns `true` if [userScript] was in the list, `false` otherwise.
   ///
@@ -1325,7 +1321,7 @@ abstract class PlatformInAppWebViewController extends PlatformInterface
   }
 
   ///{@template flutter_inappwebview_platform_interface.PlatformInAppWebViewController.removeUserScriptsByGroupName}
-  ///Removes all the [UserScript]s with [groupName] as group name from the webpage’s content.
+  ///Removes all the [UserScript]s with [groupName] as group name from the webpage's content.
   ///User scripts already loaded into the webpage's content cannot be removed. This will have effect only on the next page load.
   ///
   ///**NOTE for iOS and MacOS**: this method will throw an error if the [PlatformWebViewCreationParams.windowId] has been set.
@@ -1344,7 +1340,7 @@ abstract class PlatformInAppWebViewController extends PlatformInterface
   }
 
   ///{@template flutter_inappwebview_platform_interface.PlatformInAppWebViewController.removeUserScripts}
-  ///Removes the [userScripts] from the webpage’s content.
+  ///Removes the [userScripts] from the webpage's content.
   ///User scripts already loaded into the webpage's content cannot be removed. This will have effect only on the next page load.
   ///
   ///**NOTE for iOS and MacOS**: this method will throw an error if the [PlatformWebViewCreationParams.windowId] has been set.
@@ -1363,7 +1359,7 @@ abstract class PlatformInAppWebViewController extends PlatformInterface
   }
 
   ///{@template flutter_inappwebview_platform_interface.PlatformInAppWebViewController.removeAllUserScripts}
-  ///Removes all the user scripts from the webpage’s content.
+  ///Removes all the user scripts from the webpage's content.
   ///
   ///**NOTE for iOS and MacOS**: this method will throw an error if the [PlatformWebViewCreationParams.windowId] has been set.
   ///There isn't any way to add/remove user scripts specific to window WebViews.
@@ -1410,7 +1406,7 @@ abstract class PlatformInAppWebViewController extends PlatformInterface
   ///
   ///[contentWorld], on iOS, it represents the namespace in which to evaluate the JavaScript [source] code.
   ///Instead, on Android, it will run the [source] code into an iframe.
-  ///This parameter doesn’t apply to changes you make to the underlying web content, such as the document’s DOM structure.
+  ///This parameter doesn't apply to changes you make to the underlying web content, such as the document's DOM structure.
   ///Those changes remain visible to all scripts, regardless of which content world you specify.
   ///For more information about content worlds, see [ContentWorld].
   ///Available on iOS 14.3+.
@@ -1896,7 +1892,7 @@ abstract class PlatformInAppWebViewController extends PlatformInterface
   }
 
   ///{@template flutter_inappwebview_platform_interface.PlatformInAppWebViewController.createPdf}
-  ///Generates PDF data from the web view’s contents asynchronously.
+  ///Generates PDF data from the web view's contents asynchronously.
   ///Returns `null` if a problem occurred.
   ///
   ///[pdfConfiguration] represents the object that specifies the portion of the web view to capture as PDF data.
@@ -1919,7 +1915,7 @@ abstract class PlatformInAppWebViewController extends PlatformInterface
   }
 
   ///{@template flutter_inappwebview_platform_interface.PlatformInAppWebViewController.createWebArchiveData}
-  ///Creates a web archive of the web view’s current contents asynchronously.
+  ///Creates a web archive of the web view's current contents asynchronously.
   ///Returns `null` if a problem occurred.
   ///
   ///**NOTE for iOS**: available only on iOS 14.0+.
@@ -2001,7 +1997,7 @@ abstract class PlatformInAppWebViewController extends PlatformInterface
   ///{@template flutter_inappwebview_platform_interface.PlatformInAppWebViewController.requestMediaPlaybackState}
   ///Requests the playback status of media in the web view.
   ///Returns a [MediaPlaybackState] that indicates whether the media in the web view is playing, paused, or suspended.
-  ///If there’s no media in the web view to play, this method provides [MediaPlaybackState.NONE].
+  ///If there's no media in the web view to play, this method provides [MediaPlaybackState.NONE].
   ///
   ///**NOTE for iOS**: available on iOS 15.0+.
   ///
@@ -2461,6 +2457,33 @@ abstract class PlatformInAppWebViewController extends PlatformInterface
   Future<void> clearAllCache({bool includeDiskFiles = true}) {
     throw UnimplementedError(
         'clearAllCache is not implemented on the current platform');
+  }
+
+  ///{@template flutter_inappwebview_platform_interface.PlatformInAppWebViewController.clearContentBlockerCache}
+  ///Clears the content blocker cache. This will remove all compiled content blocking rules from memory.
+  ///
+  ///**Officially Supported Platforms/Implementations**:
+  ///- iOS
+  ///- MacOS
+  ///{@endtemplate}
+  Future<void> clearContentBlockerCache() {
+    throw UnimplementedError(
+        'clearContentBlockerCache is not implemented on the current platform');
+  }
+
+  ///{@template flutter_inappwebview_platform_interface.PlatformInAppWebViewController.precompileContentBlockersFromUrls}
+  ///Precompiles content blocker rules from a list of URLs. This allows the rules to be compiled
+  ///in advance and cached for better performance when loading web pages.
+  ///
+  ///Returns `true` if the compilation was successful, `false` otherwise.
+  ///
+  ///**Officially Supported Platforms/Implementations**:
+  ///- iOS
+  ///- MacOS
+  ///{@endtemplate}
+  Future<bool> precompileContentBlockersFromUrls(List<String> urls) {
+    throw UnimplementedError(
+        'precompileContentBlockersFromUrls is not implemented on the current platform');
   }
 
   ///{@template flutter_inappwebview_platform_interface.PlatformInAppWebViewController.enableSlowWholeDocumentDraw}

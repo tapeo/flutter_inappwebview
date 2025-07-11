@@ -1,13 +1,11 @@
 import 'dart:core';
 
 import 'package:flutter/services.dart';
-
 import 'package:flutter_inappwebview_platform_interface/flutter_inappwebview_platform_interface.dart';
 
 import '../print_job/main.dart';
 import '../web_message/main.dart';
 import '../web_storage/web_storage.dart';
-
 import 'android/in_app_webview_controller.dart';
 import 'apple/in_app_webview_controller.dart';
 
@@ -587,6 +585,15 @@ class InAppWebViewController {
   static Future<void> clearAllCache({bool includeDiskFiles = true}) =>
       PlatformInAppWebViewController.static()
           .clearAllCache(includeDiskFiles: includeDiskFiles);
+
+  ///{@macro flutter_inappwebview_platform_interface.PlatformInAppWebViewController.clearContentBlockerCache}
+  static Future<void> clearContentBlockerCache() =>
+      PlatformInAppWebViewController.static().clearContentBlockerCache();
+
+  ///{@macro flutter_inappwebview_platform_interface.PlatformInAppWebViewController.precompileContentBlockersFromUrls}
+  static Future<bool> precompileContentBlockersFromUrls(List<String> urls) =>
+      PlatformInAppWebViewController.static()
+          .precompileContentBlockersFromUrls(urls);
 
   ///{@macro flutter_inappwebview_platform_interface.PlatformInAppWebViewController.enableSlowWholeDocumentDraw}
   static Future<void> enableSlowWholeDocumentDraw() =>

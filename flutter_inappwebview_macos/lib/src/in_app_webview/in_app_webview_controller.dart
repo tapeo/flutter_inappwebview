@@ -1481,9 +1481,9 @@ class MacOSInAppWebViewController extends PlatformInAppWebViewController
                         _controllerFromPlatform, request))
                     ?.toNativeValue());
               else
-                return jsonEncode((await _inAppBrowserEventHandler!
-                        .onAjaxProgress(request))
-                    ?.toNativeValue());
+                return jsonEncode(
+                    (await _inAppBrowserEventHandler!.onAjaxProgress(request))
+                        ?.toNativeValue());
             }
             return null;
           case "shouldInterceptFetchRequest":
@@ -2674,6 +2674,21 @@ class MacOSInAppWebViewController extends PlatformInAppWebViewController
     Map<String, dynamic> args = <String, dynamic>{};
     args.putIfAbsent('includeDiskFiles', () => includeDiskFiles);
     await _staticChannel.invokeMethod('clearAllCache', args);
+  }
+
+  @override
+  Future<void> clearContentBlockerCache() async {
+    Map<String, dynamic> args = <String, dynamic>{};
+    await _staticChannel.invokeMethod('clearContentBlockerCache', args);
+  }
+
+  @override
+  Future<bool> precompileContentBlockersFromUrls(List<String> urls) async {
+    Map<String, dynamic> args = <String, dynamic>{};
+    args.putIfAbsent('urls', () => urls);
+    return await _staticChannel.invokeMethod(
+            'precompileContentBlockersFromUrls', args) ??
+        false;
   }
 
   @override

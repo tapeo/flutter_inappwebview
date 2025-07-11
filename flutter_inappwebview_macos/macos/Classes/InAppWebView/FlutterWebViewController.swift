@@ -101,27 +101,21 @@ public class FlutterWebViewController: NSView, Disposable {
             if #available(macOS 10.13, *) {
                 webView.configuration.userContentController.removeAllContentRuleLists()
                 if let contentBlockers = webView.settings?.contentBlockers, contentBlockers.count > 0 {
-                    do {
-                        let jsonData = try JSONSerialization.data(withJSONObject: contentBlockers, options: [])
-                        let blockRules = String(data: jsonData, encoding: .utf8)
-                        WKContentRuleListStore.default().compileContentRuleList(
-                            forIdentifier: "ContentBlockingRules",
-                            encodedContentRuleList: blockRules) { (contentRuleList, error) in
-
-                                if let error = error {
-                                    print(error.localizedDescription)
-                                    return
-                                }
-
-                                let configuration = webView.configuration
-                                configuration.userContentController.add(contentRuleList!)
-
-                                self.load(initialUrlRequest: initialUrlRequest, initialFile: initialFile, initialData: initialData)
+                    ContentBlockerManager.shared.getOrCompileRuleList(contentBlockers: contentBlockers) { (contentRuleList, error) in
+                        if let error = error {
+                            print("ContentBlocker compilation error: \(error.localizedDescription)")
+                            // Continue loading even if content blockers fail
+                            self.load(initialUrlRequest: initialUrlRequest, initialFile: initialFile, initialData: initialData)
+                            return
                         }
-                        return
-                    } catch {
-                        print(error.localizedDescription)
+                        
+                        if let contentRuleList = contentRuleList {
+                            webView.configuration.userContentController.add(contentRuleList)
+                        }
+                        
+                        self.load(initialUrlRequest: initialUrlRequest, initialFile: initialFile, initialData: initialData)
                     }
+                    return
                 }
             }
             load(initialUrlRequest: initialUrlRequest, initialFile: initialFile, initialData: initialData)

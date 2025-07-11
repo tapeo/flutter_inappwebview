@@ -106,27 +106,21 @@ public class InAppBrowserWebViewController: NSViewController, InAppBrowserDelega
         } else {
             if #available(macOS 10.13, *) {
                 if let contentBlockers = webView?.settings?.contentBlockers, contentBlockers.count > 0 {
-                    do {
-                        let jsonData = try JSONSerialization.data(withJSONObject: contentBlockers, options: [])
-                        let blockRules = String(data: jsonData, encoding: .utf8)
-                        WKContentRuleListStore.default().compileContentRuleList(
-                            forIdentifier: "ContentBlockingRules",
-                            encodedContentRuleList: blockRules) { (contentRuleList, error) in
-
-                                if let error = error {
-                                    print(error.localizedDescription)
-                                    return
-                                }
-
-                                let configuration = self.webView!.configuration
-                                configuration.userContentController.add(contentRuleList!)
-
-                                self.initLoad()
+                    ContentBlockerManager.shared.getOrCompileRuleList(contentBlockers: contentBlockers) { (contentRuleList, error) in
+                        if let error = error {
+                            print("ContentBlocker compilation error: \(error.localizedDescription)")
+                            // Continue loading even if content blockers fail
+                            self.initLoad()
+                            return
                         }
-                        return
-                    } catch {
-                        print(error.localizedDescription)
+                        
+                        if let contentRuleList = contentRuleList {
+                            self.webView!.configuration.userContentController.add(contentRuleList)
+                        }
+                        
+                        self.initLoad()
                     }
+                    return
                 }
             }
             
