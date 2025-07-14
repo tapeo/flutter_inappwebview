@@ -707,6 +707,19 @@ public class WebViewChannelDelegate: ChannelDelegate {
         channel?.invokeMethod("onDownloadStarting", arguments: request.toMap())
     }
     
+    public func onDownloadCompleted(originalUrl: String?, suggestedFilename: String?, filePath: String?, mimeType: String?, totalBytes: Int64?, isSuccessful: Bool, error: String?) {
+        let arguments: [String: Any?] = [
+            "originalUrl": originalUrl,
+            "suggestedFilename": suggestedFilename,
+            "filePath": filePath,
+            "mimeType": mimeType,
+            "totalBytes": totalBytes,
+            "isSuccessful": isSuccessful,
+            "error": error
+        ]
+        channel?.invokeMethod("onDownloadCompleted", arguments: arguments)
+    }
+    
     public func onCreateContextMenu(hitTestResult: HitTestResult) {
         channel?.invokeMethod("onCreateContextMenu", arguments: hitTestResult.toMap())
     }

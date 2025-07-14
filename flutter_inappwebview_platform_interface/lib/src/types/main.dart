@@ -256,3 +256,4 @@ export 'proxy_relay_hop.dart' show ProxyRelayHop;
 export 'show_file_chooser_request_mode.dart' show ShowFileChooserRequestMode;
 export 'show_file_chooser_request.dart' show ShowFileChooserRequest;
 export 'show_file_chooser_response.dart' show ShowFileChooserResponse;
+export 'download_completed_event.dart' show DownloadCompletedEvent;

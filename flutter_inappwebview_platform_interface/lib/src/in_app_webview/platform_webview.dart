@@ -226,6 +226,21 @@ class PlatformWebViewCreationParams<T> {
           T controller, DownloadStartRequest downloadStartRequest)?
       onDownloadStarting;
 
+  ///{@template flutter_inappwebview_platform_interface.PlatformWebViewCreationParams.onDownloadCompleted}
+  ///Event fired when a download completes or fails.
+  ///This event is triggered for downloads that were handled automatically by the WebView,
+  ///especially for blob URLs that are downloaded directly to the download folder.
+  ///
+  ///[downloadCompletedEvent] contains information about the completed download including
+  ///whether it was successful, the file path, and any error information.
+  ///
+  ///**Officially Supported Platforms/Implementations**:
+  ///- MacOS
+  ///{@endtemplate}
+  final void Function(
+          T controller, DownloadCompletedEvent downloadCompletedEvent)?
+      onDownloadCompleted;
+
   ///Use [onLoadResourceWithCustomScheme] instead.
   @Deprecated('Use onLoadResourceWithCustomScheme instead')
   final FutureOr<CustomSchemeResponse?> Function(T controller, Uri url)?
@@ -1263,6 +1278,7 @@ class PlatformWebViewCreationParams<T> {
       @Deprecated('Use onDownloadStarting instead') this.onDownloadStart,
       @Deprecated('Use onDownloadStarting instead') this.onDownloadStartRequest,
       this.onDownloadStarting,
+      this.onDownloadCompleted,
       @Deprecated('Use onLoadResourceWithCustomScheme instead')
       this.onLoadResourceCustomScheme,
       this.onLoadResourceWithCustomScheme,

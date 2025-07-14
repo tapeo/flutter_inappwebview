@@ -7,9 +7,9 @@ import '../inappwebview_platform.dart';
 import '../types/disposable.dart';
 import '../webview_environment/platform_webview_environment.dart';
 import 'in_app_webview_keep_alive.dart';
-import 'platform_webview.dart';
 import 'platform_headless_in_app_webview.dart';
 import 'platform_inappwebview_controller.dart';
+import 'platform_webview.dart';
 
 /// Object specifying creation parameters for creating a [PlatformInAppWebViewWidget].
 ///
@@ -44,6 +44,7 @@ class PlatformInAppWebViewWidgetCreationParams
       @Deprecated('Use onDownloadStarting instead')
       super.onDownloadStartRequest,
       super.onDownloadStarting,
+      super.onDownloadCompleted,
       @Deprecated('Use onLoadResourceWithCustomScheme instead')
       super.onLoadResourceCustomScheme,
       super.onLoadResourceWithCustomScheme,

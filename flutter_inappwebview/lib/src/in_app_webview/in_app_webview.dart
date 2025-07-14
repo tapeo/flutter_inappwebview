@@ -97,6 +97,7 @@ class InAppWebView extends StatefulWidget {
       @Deprecated('Use onDownloadStarting instead') void Function(InAppWebViewController controller, Uri url)? onDownloadStart,
       @Deprecated('Use onDownloadStarting instead') void Function(InAppWebViewController controller, DownloadStartRequest downloadStartRequest)? onDownloadStartRequest,
       FutureOr<DownloadStartResponse?> Function(InAppWebViewController controller, DownloadStartRequest downloadStartRequest)? onDownloadStarting,
+      void Function(InAppWebViewController controller, DownloadCompletedEvent downloadCompletedEvent)? onDownloadCompleted,
       @Deprecated('Use FindInteractionController.onFindResultReceived instead') void Function(InAppWebViewController controller, int activeMatchOrdinal, int numberOfMatches, bool isDoneCounting)? onFindResultReceived,
       FutureOr<JsAlertResponse?> Function(InAppWebViewController controller, JsAlertRequest jsAlertRequest)? onJsAlert,
       FutureOr<JsConfirmResponse?> Function(InAppWebViewController controller, JsConfirmRequest jsConfirmRequest)? onJsConfirm,
@@ -242,6 +243,10 @@ class InAppWebView extends StatefulWidget {
               onDownloadStarting: onDownloadStarting != null
                   ? (controller, downloadStartRequest) =>
                       onDownloadStarting.call(controller, downloadStartRequest)
+                  : null,
+              onDownloadCompleted: onDownloadCompleted != null
+                  ? (controller, downloadCompletedEvent) => onDownloadCompleted
+                      .call(controller, downloadCompletedEvent)
                   : null,
               onLoadResourceCustomScheme: onLoadResourceCustomScheme != null
                   ? (controller, url) =>

@@ -381,6 +381,18 @@ class MacOSInAppWebViewController extends PlatformInAppWebViewController
           }
         }
         break;
+      case "onDownloadCompleted":
+        if (webviewParams != null &&
+            webviewParams!.onDownloadCompleted != null) {
+          Map<String, dynamic> arguments =
+              call.arguments.cast<String, dynamic>();
+          DownloadCompletedEvent downloadCompletedEvent =
+              DownloadCompletedEvent.fromMap(arguments)!;
+
+          webviewParams!.onDownloadCompleted!(
+              _controllerFromPlatform, downloadCompletedEvent);
+        }
+        break;
       case "onLoadResourceWithCustomScheme":
         if ((webviewParams != null &&
                 (webviewParams!.onLoadResourceWithCustomScheme != null ||

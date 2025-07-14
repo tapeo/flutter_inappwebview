@@ -1342,12 +1342,56 @@ public class InAppWebView: WKWebView, WKUIDelegate,
             return
         }
 
-        print("Download completed successfully: \(filePathDestination)")
-        
         // Notify that download completed successfully
         if let channelDelegate = channelDelegate {
-            // You can add custom completion handling here if needed
-            // For example, move file to a permanent location or notify Flutter
+            // Get file size if available
+            var totalBytes: Int64? = nil
+            do {
+                let attributes = try FileManager.default.attributesOfItem(atPath: filePathDestination.path)
+                if let fileSize = attributes[.size] as? NSNumber {
+                    totalBytes = fileSize.int64Value
+                }
+            } catch {
+                print("Could not get file size: \(error.localizedDescription)")
+            }
+            
+            // Get the original URL from the download
+            let originalUrl = download.originalRequest?.url?.absoluteString
+            
+            // Get suggested filename from the file path
+            let suggestedFilename = filePathDestination.lastPathComponent
+            
+            // Try to determine MIME type from file extension
+            var mimeType: String? = nil
+            let fileExtension = filePathDestination.pathExtension.lowercased()
+            switch fileExtension {
+            case "pdf":
+                mimeType = "application/pdf"
+            case "jpg", "jpeg":
+                mimeType = "image/jpeg"
+            case "png":
+                mimeType = "image/png"
+            case "gif":
+                mimeType = "image/gif"
+            case "txt":
+                mimeType = "text/plain"
+            case "html", "htm":
+                mimeType = "text/html"
+            case "zip":
+                mimeType = "application/zip"
+            default:
+                mimeType = "application/octet-stream"
+            }
+            
+            channelDelegate.onDownloadCompleted(
+                originalUrl: originalUrl,
+                suggestedFilename: suggestedFilename,
+                filePath: filePathDestination.path,
+                mimeType: mimeType,
+                totalBytes: totalBytes,
+                isSuccessful: true,
+                error: nil
+            )
         }
         
         // Reset the destination path
@@ -1357,6 +1401,24 @@ public class InAppWebView: WKWebView, WKUIDelegate,
     @available(macOS 11.3, *)
     public func download(_ download: WKDownload, didFailWithError error: Error, resumeData: Data?) {
         print("Download failed with error: \(error.localizedDescription)")
+        
+        // Notify that download failed
+        if let channelDelegate = channelDelegate {
+            let originalUrl = download.originalRequest?.url?.absoluteString
+            
+            // Use a default filename since we don't have access to response
+            let suggestedFilename = "download"
+            
+            channelDelegate.onDownloadCompleted(
+                originalUrl: originalUrl,
+                suggestedFilename: suggestedFilename,
+                filePath: nil,
+                mimeType: nil,
+                totalBytes: nil,
+                isSuccessful: false,
+                error: error.localizedDescription
+            )
+        }
         
         // You can add code here to continue the download in case there was a failure
         // using the resumeData if available
