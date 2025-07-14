@@ -96,7 +96,9 @@ public class ContentBlockerManager {
         let contentBlockers: [[String: [String: Any]]] = urls.map { url in
             return [
                 "trigger": [
-                    "url-filter": url
+                    "url-filter": url,
+                    "load-type": ["third-party"],
+                    "resource-type": ["image", "style-sheet", "script", "font", "raw", "svg-document", "media", "popup"]
                 ] as [String: Any],
                 "action": [
                     "type": "block"
