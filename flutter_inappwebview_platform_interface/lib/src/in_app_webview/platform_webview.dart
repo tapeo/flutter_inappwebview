@@ -3,17 +3,17 @@ import 'dart:collection';
 import 'dart:typed_data';
 import 'dart:ui';
 
-import '../find_interaction/platform_find_interaction_controller.dart';
-import '../pull_to_refresh/platform_pull_to_refresh_controller.dart';
 import '../context_menu/context_menu.dart';
+import '../find_interaction/platform_find_interaction_controller.dart';
+import '../platform_webview_feature.dart';
+import '../print_job/main.dart';
+import '../pull_to_refresh/platform_pull_to_refresh_controller.dart';
 import '../types/main.dart';
 import '../web_uri.dart';
 import 'in_app_webview_settings.dart';
-import 'platform_inappwebview_controller.dart';
-import '../print_job/main.dart';
-import 'platform_inappwebview_widget.dart';
 import 'platform_headless_in_app_webview.dart';
-import '../platform_webview_feature.dart';
+import 'platform_inappwebview_controller.dart';
+import 'platform_inappwebview_widget.dart';
 
 ///{@template flutter_inappwebview_platform_interface.PlatformWebViewCreationParams}
 ///Class that represents a WebView. Used by [PlatformInAppWebViewWidget],
@@ -1141,7 +1141,8 @@ class PlatformWebViewCreationParams<T> {
   ///**Officially Supported Platforms/Implementations**:
   ///- Android native WebView ([Official API - WebChromeClient.onShowFileChooser](https://developer.android.com/reference/android/webkit/WebChromeClient#onShowFileChooser(android.webkit.WebView,%20android.webkit.ValueCallback%3Candroid.net.Uri[]%3E,%20android.webkit.WebChromeClient.FileChooserParams)))
   ///{@endtemplate}
-  final FutureOr<ShowFileChooserResponse?> Function(T controller, ShowFileChooserRequest request)? onShowFileChooser;
+  final FutureOr<ShowFileChooserResponse?> Function(
+      T controller, ShowFileChooserRequest request)? onShowFileChooser;
 
   ///{@template flutter_inappwebview_platform_interface.PlatformWebViewCreationParams.initialUrlRequest}
   ///Initial url request that will be loaded.

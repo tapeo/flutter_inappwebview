@@ -65,6 +65,7 @@ public class InAppWebViewSettings: ISettings<InAppWebView> {
     var pluginScriptsForMainFrameOnly = false
     var alpha: Double? = nil
     var profileId: String? = nil
+    var downloadPath: String? = nil
     
     override init(){
         super.init()
@@ -81,6 +82,10 @@ public class InAppWebViewSettings: ISettings<InAppWebView> {
         if let profileIdValue = settings["profileId"] as? String {
             profileId = profileIdValue
             settings.removeValue(forKey: "profileId")
+        }
+        if let downloadPathValue = settings["downloadPath"] as? String {
+            downloadPath = downloadPathValue
+            settings.removeValue(forKey: "downloadPath")
         }
         let _ = super.parse(settings: settings)
         if #available(macOS 10.15, *) {} else {
@@ -134,6 +139,7 @@ public class InAppWebViewSettings: ISettings<InAppWebView> {
             }
         }
         realSettings["profileId"] = profileId
+        realSettings["downloadPath"] = downloadPath
         return realSettings
     }
 }

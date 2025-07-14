@@ -29,6 +29,7 @@ public class InAppWebView: WKWebView, WKUIDelegate,
     var currentOriginalUrl: URL?
     var inFullscreen = false
     private var printJobCompletionHandler: PrintJobController.CompletionHandler?
+    private var filePathDestination: URL?
     
     static var sslCertificatesMap: [String: SslCertificate] = [:] // [URL host name : SslCertificate]
     static var credentialsProposed: [URLCredential] = []
@@ -1265,6 +1266,14 @@ public class InAppWebView: WKWebView, WKUIDelegate,
                  decidePolicyFor navigationAction: WKNavigationAction,
                  preferences: WKWebpagePreferences,
                  decisionHandler: @escaping (WKNavigationActionPolicy, WKWebpagePreferences) -> Void) {
+        // Check if this should be a download (for blob URLs and other downloadable content)
+        if #available(macOS 11.3, *) {
+            if navigationAction.shouldPerformDownload {
+                decisionHandler(.download, preferences)
+                return
+            }
+        }
+        
         self.webView(webView, decidePolicyFor: navigationAction, decisionHandler: {(navigationActionPolicy) -> Void in
             decisionHandler(navigationActionPolicy, preferences)
         })
@@ -1272,6 +1281,14 @@ public class InAppWebView: WKWebView, WKUIDelegate,
     
     @available(macOS 11.3, *)
     public func download(_ download: WKDownload, decideDestinationUsing response: URLResponse, suggestedFilename: String, completionHandler: @escaping (URL?) -> Void) {
+        // Check if this is a blob URL and handle with new download logic
+        if let url = response.url, url.absoluteString.hasPrefix("blob:") {
+            filePathDestination = generateDownloadDestination(with: suggestedFilename)
+            completionHandler(filePathDestination)
+            return
+        }
+        
+        // Use original logic for non-blob URLs
         if let url = response.url, let useOnDownloadStart = settings?.useOnDownloadStart, useOnDownloadStart {
             let downloadStartRequest = DownloadStartRequest(url: url.absoluteString,
                                                             userAgent: nil,
@@ -1281,15 +1298,29 @@ public class InAppWebView: WKWebView, WKUIDelegate,
                                                             suggestedFilename: suggestedFilename,
                                                             textEncodingName: response.textEncodingName)
             channelDelegate?.onDownloadStarting(request: downloadStartRequest)
+            completionHandler(nil)
+        } else {
+            filePathDestination = generateDownloadDestination(with: suggestedFilename)
+            completionHandler(filePathDestination)
         }
-        download.delegate = nil
-        // cancel the download
-        completionHandler(nil)
+    }
+    
+    @available(macOS 11.3, *)
+    public func webView(_ webView: WKWebView, navigationAction: WKNavigationAction, didBecome download: WKDownload) {
+        download.delegate = self
     }
     
     @available(macOS 11.3, *)
     public func webView(_ webView: WKWebView, navigationResponse: WKNavigationResponse, didBecome download: WKDownload) {
         let response = navigationResponse.response
+        
+        // Check if this is a blob URL and handle with new download logic
+        if let url = response.url, url.absoluteString.hasPrefix("blob:") {
+            download.delegate = self
+            return
+        }
+        
+        // Use original logic for non-blob URLs
         if let url = response.url, let useOnDownloadStart = settings?.useOnDownloadStart, useOnDownloadStart {
             let downloadStartRequest = DownloadStartRequest(url: url.absoluteString,
                                                             userAgent: nil,
@@ -1299,8 +1330,39 @@ public class InAppWebView: WKWebView, WKUIDelegate,
                                                             suggestedFilename: response.suggestedFilename,
                                                             textEncodingName: response.textEncodingName)
             channelDelegate?.onDownloadStarting(request: downloadStartRequest)
+            download.cancel { _ in }
+        } else {
+            download.delegate = self
         }
-        download.delegate = nil
+    }
+    
+    @available(macOS 11.3, *)
+    public func downloadDidFinish(_ download: WKDownload) {
+        guard let filePathDestination = filePathDestination else {
+            return
+        }
+
+        print("Download completed successfully: \(filePathDestination)")
+        
+        // Notify that download completed successfully
+        if let channelDelegate = channelDelegate {
+            // You can add custom completion handling here if needed
+            // For example, move file to a permanent location or notify Flutter
+        }
+        
+        // Reset the destination path
+        self.filePathDestination = nil
+    }
+    
+    @available(macOS 11.3, *)
+    public func download(_ download: WKDownload, didFailWithError error: Error, resumeData: Data?) {
+        print("Download failed with error: \(error.localizedDescription)")
+        
+        // You can add code here to continue the download in case there was a failure
+        // using the resumeData if available
+        
+        // Reset the destination path
+        filePathDestination = nil
     }
     
     public func webView(_ webView: WKWebView,
@@ -1377,23 +1439,60 @@ public class InAppWebView: WKWebView, WKUIDelegate,
         }
         
         if let useOnDownloadStart = settings?.useOnDownloadStart, useOnDownloadStart {
-            if #available(macOS 11.3, *), !navigationResponse.canShowMIMEType, useOnNavigationResponse == nil || !useOnNavigationResponse! {
-                decisionHandler(.download)
-                return
-            } else {
+            if #available(macOS 11.3, *) {
+                // Check if content can be shown, if not, trigger download
+                if !navigationResponse.canShowMIMEType {
+                    if useOnNavigationResponse == nil || !useOnNavigationResponse! {
+                        decisionHandler(.download)
+                        return
+                    }
+                }
+            }
+            
+            let mimeType = navigationResponse.response.mimeType
+            if let url = navigationResponse.response.url, navigationResponse.isForMainFrame {
+                if url.scheme != "file", mimeType != nil, !mimeType!.starts(with: "text/") {
+                    // Check if it's a blob URL - if so, trigger download directly
+                    if url.absoluteString.hasPrefix("blob:") {
+                        if #available(macOS 11.3, *) {
+                            if useOnNavigationResponse == nil || !useOnNavigationResponse! {
+                                decisionHandler(.download)
+                            }
+                        }
+                        return
+                    }
+                    
+                    // For non-blob URLs, use original logic
+                    let downloadStartRequest = DownloadStartRequest(url: url.absoluteString,
+                                                                   userAgent: nil,
+                                                                   contentDisposition: nil,
+                                                                   mimeType: mimeType,
+                                                                   contentLength: navigationResponse.response.expectedContentLength,
+                                                                   suggestedFilename: navigationResponse.response.suggestedFilename,
+                                                                   textEncodingName: navigationResponse.response.textEncodingName)
+                    channelDelegate?.onDownloadStarting(request: downloadStartRequest)
+                    if useOnNavigationResponse == nil || !useOnNavigationResponse! {
+                        decisionHandler(.cancel)
+                    }
+                    return
+                }
+            }
+        } else {
+            // Handle automatic downloads based on MIME type when useOnDownloadStart is false
+            if #available(macOS 11.3, *) {
+                // Check if content can be shown, if not, trigger download
+                if !navigationResponse.canShowMIMEType {
+                    if useOnNavigationResponse == nil || !useOnNavigationResponse! {
+                        decisionHandler(.download)
+                        return
+                    }
+                }
+                
                 let mimeType = navigationResponse.response.mimeType
                 if let url = navigationResponse.response.url, navigationResponse.isForMainFrame {
                     if url.scheme != "file", mimeType != nil, !mimeType!.starts(with: "text/") {
-                        let downloadStartRequest = DownloadStartRequest(url: url.absoluteString,
-                                                                        userAgent: nil,
-                                                                        contentDisposition: nil,
-                                                                        mimeType: mimeType,
-                                                                        contentLength: navigationResponse.response.expectedContentLength,
-                                                                        suggestedFilename: navigationResponse.response.suggestedFilename,
-                                                                        textEncodingName: navigationResponse.response.textEncodingName)
-                        channelDelegate?.onDownloadStarting(request: downloadStartRequest)
                         if useOnNavigationResponse == nil || !useOnNavigationResponse! {
-                            decisionHandler(.cancel)
+                            decisionHandler(.download)
                         }
                         return
                     }
@@ -2850,6 +2949,41 @@ if(window.\(JavaScriptBridgeJS.get_JAVASCRIPT_BRIDGE_NAME())[\(_callHandlerID)] 
         windowBeforeCreatedCallbacks.removeAll()
     }
     
+    private func generateDownloadDestination(with suggestedFilename: String) -> URL? {
+        // Use configured download path or default to Downloads folder
+        let downloadDirectory: URL
+        if let downloadPath = settings?.downloadPath, !downloadPath.isEmpty {
+            downloadDirectory = URL(fileURLWithPath: downloadPath)
+        } else {
+            downloadDirectory = FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask).first ?? FileManager.default.temporaryDirectory
+        }
+        
+        // Create download directory if it doesn't exist
+        do {
+            try FileManager.default.createDirectory(at: downloadDirectory, withIntermediateDirectories: true, attributes: nil)
+        } catch {
+            print("Failed to create download directory: \(error.localizedDescription)")
+            return nil
+        }
+        
+        let fileName = suggestedFilename.isEmpty ? "download" : suggestedFilename
+        let fileURL = downloadDirectory.appendingPathComponent(fileName)
+        
+        // If file already exists, append a number to make it unique
+        var counter = 1
+        var uniqueFileURL = fileURL
+        let fileExtension = fileURL.pathExtension
+        let fileNameWithoutExtension = fileURL.deletingPathExtension().lastPathComponent
+        
+        while FileManager.default.fileExists(atPath: uniqueFileURL.path) {
+            let newFileName = "\(fileNameWithoutExtension)_\(counter).\(fileExtension)"
+            uniqueFileURL = downloadDirectory.appendingPathComponent(newFileName)
+            counter += 1
+        }
+        
+        return uniqueFileURL
+    }
+    
     public func dispose() {
         channelDelegate?.dispose()
         channelDelegate = nil
@@ -2858,6 +2992,7 @@ if(window.\(JavaScriptBridgeJS.get_JAVASCRIPT_BRIDGE_NAME())[\(_callHandlerID)] 
         currentOpenPanel?.close()
         currentOpenPanel = nil
         printJobCompletionHandler = nil
+        filePathDestination = nil
         removeObserver(self, forKeyPath: #keyPath(WKWebView.estimatedProgress))
         removeObserver(self, forKeyPath: #keyPath(WKWebView.url))
         removeObserver(self, forKeyPath: #keyPath(WKWebView.title))

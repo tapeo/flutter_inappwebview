@@ -75,6 +75,15 @@ class InAppWebViewSettings_ {
       platforms: [AndroidPlatform(), IOSPlatform(), MacOSPlatform()])
   bool? useOnDownloadStart;
 
+  ///Sets the directory path where files will be downloaded.
+  ///If not set, files will be downloaded to the platform's default download directory.
+  ///This path is used specifically for blob URL downloads and when useOnDownloadStart is false.
+  ///
+  ///The path should be an absolute path to a directory. If the directory doesn't exist,
+  ///it will be created automatically when the first download starts.
+  @SupportedPlatforms(platforms: [MacOSPlatform()])
+  String? downloadPath;
+
   ///Use [PlatformInAppWebViewController.clearAllCache] instead.
   @Deprecated("Use InAppWebViewController.clearAllCache instead")
   @ExchangeableObjectProperty(leaveDeprecatedInToMapMethod: true)
@@ -2121,6 +2130,7 @@ as it can cause framerate drops on animations in Android 9 and lower (see [Hybri
     this.useShouldOverrideUrlLoading,
     this.useOnLoadResource,
     this.useOnDownloadStart,
+    this.downloadPath,
     @Deprecated("Use InAppWebViewController.clearAllCache instead")
     this.clearCache = false,
     this.userAgent = "",
@@ -2406,6 +2416,9 @@ class InAppWebViewOptions
   ///Set to `true` to be able to listen at the [PlatformWebViewCreationParams.onDownloadStart] event. The default value is `false`.
   bool useOnDownloadStart;
 
+  ///Sets the directory path where files will be downloaded. If not set, files will be downloaded to the platform's default download directory.
+  String? downloadPath;
+
   ///Set to `true` to have all the browser's cache cleared before the new WebView is opened. The default value is `false`.
   bool clearCache;
 
@@ -2513,6 +2526,7 @@ class InAppWebViewOptions
       {this.useShouldOverrideUrlLoading = false,
       this.useOnLoadResource = false,
       this.useOnDownloadStart = false,
+      this.downloadPath,
       this.clearCache = false,
       this.userAgent = "",
       this.applicationNameForUserAgent = "",
@@ -2553,6 +2567,7 @@ class InAppWebViewOptions
       "useShouldOverrideUrlLoading": useShouldOverrideUrlLoading,
       "useOnLoadResource": useOnLoadResource,
       "useOnDownloadStart": useOnDownloadStart,
+      "downloadPath": downloadPath,
       "clearCache": clearCache,
       "userAgent": userAgent,
       "applicationNameForUserAgent": applicationNameForUserAgent,
@@ -2594,6 +2609,7 @@ class InAppWebViewOptions
     instance.useShouldOverrideUrlLoading = map["useShouldOverrideUrlLoading"];
     instance.useOnLoadResource = map["useOnLoadResource"];
     instance.useOnDownloadStart = map["useOnDownloadStart"];
+    instance.downloadPath = map["downloadPath"];
     instance.clearCache = map["clearCache"];
     instance.userAgent = map["userAgent"];
     instance.applicationNameForUserAgent = map["applicationNameForUserAgent"];
