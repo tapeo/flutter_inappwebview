@@ -1308,101 +1308,19 @@ public class InAppWebView: WKWebView, WKUIDelegate,
             return
         }
         
-        if let url = response.url, let useOnDownloadStart = settings?.useOnDownloadStart, useOnDownloadStart {
-            let downloadStartRequest = DownloadStartRequest(url: url.absoluteString,
-                                                            userAgent: nil,
-                                                            contentDisposition: nil,
-                                                            mimeType: response.mimeType,
-                                                            contentLength: response.expectedContentLength,
-                                                            suggestedFilename: response.suggestedFilename,
-                                                            textEncodingName: response.textEncodingName)
-            let callback = WebViewChannelDelegate.DownloadStartCallback()
-            callback.nonNullSuccess = { [weak self] (proceed: Bool) in
-                guard let self = self else { return false }
-                if proceed {
-                    self.startTrackedDownload(url: url, suggestedFilename: response.suggestedFilename)
-                } else {
-                    download.cancel { _ in }
-                }
-                return false
-            }
-            callback.defaultBehaviour = { [weak self] (_: Bool?) in
-                // Default: cancel download if no response
-                download.cancel { _ in }
-            }
-            callback.error = { [weak self] (code: String, message: String?, details: Any?) in
-                // On error: cancel download
-                download.cancel { _ in }
-            }
-            channelDelegate?.onDownloadStartRequest(request: downloadStartRequest, callback: callback)
-        } else {
-            download.delegate = self
-        }
+        download.delegate = self
     }
     
     @available(macOS 11.3, *)
     public func downloadDidFinish(_ download: WKDownload) {
-        guard let filePathDestination = filePathDestination else {
-            return
-        }
-
-        // Notify that download completed successfully
-        if let channelDelegate = channelDelegate {
-            var totalBytes: Int64? = nil
-            do {
-                let attributes = try FileManager.default.attributesOfItem(atPath: filePathDestination.path)
-                if let fileSize = attributes[.size] as? NSNumber {
-                    totalBytes = fileSize.int64Value
-                }
-            } catch {
-                print("Could not get file size: \(error.localizedDescription)")
-            }
-
-            let originalUrl = download.originalRequest?.url?.absoluteString
-            let suggestedFilename = filePathDestination.lastPathComponent
-
-            // No mime type detection, just use nil
-            channelDelegate.onDownloadCompleted(
-                originalUrl: originalUrl,
-                suggestedFilename: suggestedFilename,
-                filePath: filePathDestination.path,
-                mimeType: nil,
-                totalBytes: totalBytes,
-                isSuccessful: true,
-                error: nil
-            )
-        }
-
-        self.filePathDestination = nil
+        // This method is called when WKDownload finishes, but we handle completion in URLSession delegate
+        // No need to do anything here as our startTrackedDownload handles everything
     }
     
     @available(macOS 11.3, *)
     public func download(_ download: WKDownload, didFailWithError error: Error, resumeData: Data?) {
-        print("Download failed with error: \(error.localizedDescription)")
-        
-        // Notify that download failed
-        if let channelDelegate = channelDelegate {
-            let originalUrl = download.originalRequest?.url?.absoluteString
-            
-            // Use a default filename since we don't have access to response
-            let suggestedFilename = "download"
-            
-            channelDelegate.onDownloadCompleted(
-                originalUrl: originalUrl,
-                suggestedFilename: suggestedFilename,
-                filePath: nil,
-                mimeType: nil,
-                totalBytes: nil,
-                isSuccessful: false,
-                error: error.localizedDescription
-            )
-        }
-        
-        // You can add code here to continue the download in case there was a failure
-        // using the resumeData if available
-        
-        // Reset the destination path
-        filePathDestination = nil
+        // This method is called when WKDownload fails, but we handle errors in URLSession delegate
+        // No need to do anything here as our startTrackedDownload handles everything
     }
     
     public func webView(_ webView: WKWebView,
@@ -1476,54 +1394,19 @@ public class InAppWebView: WKWebView, WKUIDelegate,
             }
         }
         
-        if let useOnDownloadStart = settings?.useOnDownloadStart, useOnDownloadStart {
-            if #available(macOS 11.3, *) {
-                // Check if content can be shown, if not, trigger download
-                if !navigationResponse.canShowMIMEType {
-                    decisionHandler(.download)
-                    return
-                }
+        // Handle automatic downloads based on MIME type
+        if #available(macOS 11.3, *) {
+            // Check if content can be shown, if not, trigger download
+            if !navigationResponse.canShowMIMEType {
+                decisionHandler(.download)
+                return
             }
             
             let mimeType = navigationResponse.response.mimeType
             if let url = navigationResponse.response.url, navigationResponse.isForMainFrame {
                 if url.scheme != "file", mimeType != nil, !mimeType!.starts(with: "text/") {
-                    // Check if it's a blob URL - if so, trigger download directly
-                    if url.absoluteString.hasPrefix("blob:") {
-                        if #available(macOS 11.3, *) {
-                            decisionHandler(.download)
-                        }
-                        return
-                    }
-                    
-                    // For non-blob URLs, use original logic
-                    let downloadStartRequest = DownloadStartRequest(url: url.absoluteString,
-                                                                   userAgent: nil,
-                                                                   contentDisposition: nil,
-                                                                   mimeType: mimeType,
-                                                                   contentLength: navigationResponse.response.expectedContentLength,
-                                                                   suggestedFilename: navigationResponse.response.suggestedFilename,
-                                                                   textEncodingName: navigationResponse.response.textEncodingName)
-                    channelDelegate?.onDownloadStarting(request: downloadStartRequest)
-                    decisionHandler(.cancel)
-                    return
-                }
-            }
-        } else {
-            // Handle automatic downloads based on MIME type when useOnDownloadStart is false
-            if #available(macOS 11.3, *) {
-                // Check if content can be shown, if not, trigger download
-                if !navigationResponse.canShowMIMEType {
                     decisionHandler(.download)
                     return
-                }
-                
-                let mimeType = navigationResponse.response.mimeType
-                if let url = navigationResponse.response.url, navigationResponse.isForMainFrame {
-                    if url.scheme != "file", mimeType != nil, !mimeType!.starts(with: "text/") {
-                        decisionHandler(.download)
-                        return
-                    }
                 }
             }
         }
@@ -2905,15 +2788,18 @@ if(window.\(JavaScriptBridgeJS.get_JAVASCRIPT_BRIDGE_NAME())[\(_callHandlerID)] 
 
     // 3. Add a method to start a download with progress tracking
     public func startTrackedDownload(url: URL, suggestedFilename: String?) {
+        print("Starting tracked download for \(url.absoluteString)")
+        
         if urlSession == nil {
             let config = URLSessionConfiguration.default
             urlSession = URLSession(configuration: config, delegate: self, delegateQueue: nil)
         }
+        
         let task = urlSession!.downloadTask(with: url)
         activeDownloadTasks[url] = task
         activeDownloadProgress[url] = 0
-        task.resume()
-        // Optionally, send a start event
+        
+        // Send start event
         let request = DownloadStartRequest(
             url: url.absoluteString,
             userAgent: nil,
@@ -2923,9 +2809,12 @@ if(window.\(JavaScriptBridgeJS.get_JAVASCRIPT_BRIDGE_NAME())[\(_callHandlerID)] 
             suggestedFilename: suggestedFilename,
             textEncodingName: nil
         )
+        
         DispatchQueue.main.async {
             self.channelDelegate?.onDownloadStarting(request: request)
         }
+        
+        task.resume()
     }
 }
 
@@ -2934,12 +2823,16 @@ extension InAppWebView: URLSessionDownloadDelegate {
         guard let url = downloadTask.originalRequest?.url else { return }
         let progress = totalBytesExpectedToWrite > 0 ? Double(totalBytesWritten) / Double(totalBytesExpectedToWrite) : 0
         activeDownloadProgress[url] = progress
+        
+        print("Download progress for \(url.absoluteString): \(Int(progress * 100))% (\(totalBytesWritten)/\(totalBytesExpectedToWrite) bytes)")
+        
         DispatchQueue.main.async {
             self.channelDelegate?.onDownloadProgress(url: url.absoluteString, progress: progress, totalBytes: totalBytesExpectedToWrite, downloadedBytes: totalBytesWritten)
         }
     }
     public func urlSession(_ session: URLSession, downloadTask: URLSessionDownloadTask, didFinishDownloadingTo location: URL) {
         guard let url = downloadTask.originalRequest?.url else { return }
+        print("Download completed for \(url.absoluteString)")
         let suggestedFilename = downloadTask.response?.suggestedFilename ?? url.lastPathComponent
         let downloadDirectory: URL
         if let downloadPath = settings?.downloadPath, !downloadPath.isEmpty {
