@@ -70,6 +70,9 @@ public class InAppWebView: WKWebView, WKUIDelegate,
             let channel = FlutterMethodChannel(name: InAppWebView.METHOD_CHANNEL_NAME_PREFIX + String(describing: id),
                                            binaryMessenger: registrar.messenger)
             self.channelDelegate = WebViewChannelDelegate(webView: self, channel: channel)
+            print("InAppWebView: channelDelegate initialized for id: \(id)")
+        } else {
+            print("InAppWebView: Failed to initialize channelDelegate - id: \(id != nil ? "not nil" : "nil"), registrar: \(plugin?.registrar != nil)")
         }
         self.initialUserScripts = userScripts
         uiDelegate = self
@@ -1273,6 +1276,7 @@ public class InAppWebView: WKWebView, WKUIDelegate,
         // Check if this should be a download (for blob URLs and other downloadable content)
         if #available(macOS 11.3, *) {
             if navigationAction.shouldPerformDownload {
+                print("Navigation action should perform download for \(navigationAction.request.url?.absoluteString ?? "nil")")
                 decisionHandler(.download, preferences)
                 return
             }
@@ -1285,29 +1289,36 @@ public class InAppWebView: WKWebView, WKUIDelegate,
     
     @available(macOS 11.3, *)
     public func download(_ download: WKDownload, decideDestinationUsing response: URLResponse, suggestedFilename: String, completionHandler: @escaping (URL?) -> Void) {
+        print("WKDownload decideDestinationUsing called for \(response.url?.absoluteString ?? "nil")")
         if let url = response.url {
+            print("Starting tracked download from WKDownload")
             startTrackedDownload(url: url, suggestedFilename: suggestedFilename)
             completionHandler(nil) // Cancel WKDownload, we handle it ourselves
             return
         }
+        print("No URL found in response, calling completionHandler with nil")
         completionHandler(nil)
     }
     
     @available(macOS 11.3, *)
     public func webView(_ webView: WKWebView, navigationAction: WKNavigationAction, didBecome download: WKDownload) {
+        print("Navigation action didBecome download for \(navigationAction.request.url?.absoluteString ?? "nil")")
         download.delegate = self
     }
     
     @available(macOS 11.3, *)
     public func webView(_ webView: WKWebView, navigationResponse: WKNavigationResponse, didBecome download: WKDownload) {
         let response = navigationResponse.response
+        print("Navigation response didBecome download for \(response.url?.absoluteString ?? "nil")")
 
         // Check if this is a blob URL and handle with new download logic
         if let url = response.url, url.absoluteString.hasPrefix("blob:") {
+            print("Blob URL detected, setting download delegate")
             download.delegate = self
             return
         }
         
+        print("Setting download delegate for regular download")
         download.delegate = self
     }
     
@@ -2789,13 +2800,18 @@ if(window.\(JavaScriptBridgeJS.get_JAVASCRIPT_BRIDGE_NAME())[\(_callHandlerID)] 
     // 3. Add a method to start a download with progress tracking
     public func startTrackedDownload(url: URL, suggestedFilename: String?) {
         print("Starting tracked download for \(url.absoluteString)")
+        print("Channel delegate is nil: \(self.channelDelegate == nil)")
         
         if urlSession == nil {
+            print("Creating new URLSession for download")
             let config = URLSessionConfiguration.default
             urlSession = URLSession(configuration: config, delegate: self, delegateQueue: nil)
+        } else {
+            print("Using existing URLSession for download")
         }
         
         let task = urlSession!.downloadTask(with: url)
+        print("Created download task for \(url.absoluteString)")
         activeDownloadTasks[url] = task
         activeDownloadProgress[url] = 0
         
@@ -2811,7 +2827,12 @@ if(window.\(JavaScriptBridgeJS.get_JAVASCRIPT_BRIDGE_NAME())[\(_callHandlerID)] 
         )
         
         DispatchQueue.main.async {
-            self.channelDelegate?.onDownloadStarting(request: request)
+            if let channelDelegate = self.channelDelegate {
+                print("Calling onDownloadStarting on channel delegate")
+                channelDelegate.onDownloadStarting(request: request)
+            } else {
+                print("Channel delegate is nil, cannot send download starting")
+            }
         }
         
         task.resume()
@@ -2825,9 +2846,15 @@ extension InAppWebView: URLSessionDownloadDelegate {
         activeDownloadProgress[url] = progress
         
         print("Download progress for \(url.absoluteString): \(Int(progress * 100))% (\(totalBytesWritten)/\(totalBytesExpectedToWrite) bytes)")
+        print("Channel delegate is nil: \(self.channelDelegate == nil)")
         
         DispatchQueue.main.async {
-            self.channelDelegate?.onDownloadProgress(url: url.absoluteString, progress: progress, totalBytes: totalBytesExpectedToWrite, downloadedBytes: totalBytesWritten)
+            if let channelDelegate = self.channelDelegate {
+                print("Calling onDownloadProgress on channel delegate")
+                channelDelegate.onDownloadProgress(url: url.absoluteString, progress: progress, totalBytes: totalBytesExpectedToWrite, downloadedBytes: totalBytesWritten)
+            } else {
+                print("Channel delegate is nil, cannot send download progress")
+            }
         }
     }
     public func urlSession(_ session: URLSession, downloadTask: URLSessionDownloadTask, didFinishDownloadingTo location: URL) {

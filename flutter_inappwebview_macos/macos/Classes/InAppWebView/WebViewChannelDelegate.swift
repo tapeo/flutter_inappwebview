@@ -704,7 +704,13 @@ public class WebViewChannelDelegate: ChannelDelegate {
     }
     
     public func onDownloadStarting(request: DownloadStartRequest) {
-        channel?.invokeMethod("onDownloadStarting", arguments: request.toMap())
+        print("WebViewChannelDelegate.onDownloadStarting called with url: \(request.url)")
+        if let channel = channel {
+            print("Invoking onDownloadStarting method on channel")
+            channel.invokeMethod("onDownloadStarting", arguments: request.toMap())
+        } else {
+            print("Channel is nil, cannot invoke onDownloadStarting method")
+        }
     }
     
     public func onDownloadCompleted(originalUrl: String?, suggestedFilename: String?, filePath: String?, mimeType: String?, totalBytes: Int64?, isSuccessful: Bool, error: String?) {
@@ -721,13 +727,19 @@ public class WebViewChannelDelegate: ChannelDelegate {
     }
     
     public func onDownloadProgress(url: String, progress: Double, totalBytes: Int64, downloadedBytes: Int64) {
+        print("WebViewChannelDelegate.onDownloadProgress called with url: \(url), progress: \(progress)")
         let arguments: [String: Any?] = [
             "url": url,
             "progress": progress,
             "totalBytes": totalBytes,
             "downloadedBytes": downloadedBytes
         ]
-        channel?.invokeMethod("onDownloadProgress", arguments: arguments)
+        if let channel = channel {
+            print("Invoking onDownloadProgress method on channel")
+            channel.invokeMethod("onDownloadProgress", arguments: arguments)
+        } else {
+            print("Channel is nil, cannot invoke onDownloadProgress method")
+        }
     }
     
     public func onCreateContextMenu(hitTestResult: HitTestResult) {

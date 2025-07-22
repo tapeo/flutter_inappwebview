@@ -38,6 +38,7 @@ class MacOSInAppWebViewWidgetCreationParams
       @Deprecated('Use onDownloadStarting instead')
       super.onDownloadStartRequest,
       super.onDownloadStarting,
+      super.onDownloadProgress,
       super.onDownloadCompleted,
       @Deprecated('Use onLoadResourceWithCustomScheme instead')
       super.onLoadResourceCustomScheme,
@@ -162,6 +163,7 @@ class MacOSInAppWebViewWidgetCreationParams
             onDownloadStart: params.onDownloadStart,
             onDownloadStartRequest: params.onDownloadStartRequest,
             onDownloadStarting: params.onDownloadStarting,
+            onDownloadProgress: params.onDownloadProgress,
             onDownloadCompleted: params.onDownloadCompleted,
             onLoadResourceCustomScheme: params.onLoadResourceCustomScheme,
             onLoadResourceWithCustomScheme:

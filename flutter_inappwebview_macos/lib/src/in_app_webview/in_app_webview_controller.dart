@@ -142,6 +142,17 @@ class MacOSInAppWebViewController extends PlatformInAppWebViewController
   }
 
   void _init(PlatformInAppWebViewControllerCreationParams params) {
+    print("Flutter controller _init called");
+    print(
+        "Flutter controller webviewParams is null: ${params.webviewParams == null}");
+    if (params.webviewParams != null) {
+      print(
+          "Flutter controller onDownloadProgress callback is null: ${params.webviewParams!.onDownloadProgress == null}");
+      print(
+          "Flutter controller onDownloadStarting callback is null: ${params.webviewParams!.onDownloadStarting == null}");
+      print(
+          "Flutter controller onDownloadCompleted callback is null: ${params.webviewParams!.onDownloadCompleted == null}");
+    }
     _controllerFromPlatform =
         params.webviewParams?.controllerFromPlatform?.call(this) ?? this;
 
@@ -193,6 +204,8 @@ class MacOSInAppWebViewController extends PlatformInAppWebViewController
   }
 
   Future<dynamic> _handleMethod(MethodCall call) async {
+    print(
+        "Flutter controller _handleMethod called with method: ${call.method}");
     if (call.method == "_onMouseDown") {
       // Workaround for https://github.com/pichillilorenzo/flutter_inappwebview/issues/2380
       // TODO: remove when Flutter fixes this
@@ -352,6 +365,7 @@ class MacOSInAppWebViewController extends PlatformInAppWebViewController
         }
         break;
       case "onDownloadStarting":
+        print("Flutter controller: onDownloadStarting method called");
         if ((webviewParams != null &&
                 (webviewParams!.onDownloadStart != null ||
                     webviewParams!.onDownloadStartRequest != null ||
@@ -386,6 +400,7 @@ class MacOSInAppWebViewController extends PlatformInAppWebViewController
         }
         break;
       case "onDownloadCompleted":
+        print("Flutter controller: onDownloadCompleted method called");
         if (webviewParams != null &&
             webviewParams!.onDownloadCompleted != null) {
           Map<String, dynamic> arguments =
@@ -1574,15 +1589,35 @@ class MacOSInAppWebViewController extends PlatformInAppWebViewController
         }
         break;
       case "onDownloadProgress":
+        print("Flutter controller: onDownloadProgress method called");
+        print(
+            "Flutter controller: webviewParams is null: ${webviewParams == null}");
+        if (webviewParams != null) {
+          print(
+              "Flutter controller: webviewParams type: ${webviewParams.runtimeType}");
+          print(
+              "Flutter controller: onDownloadProgress callback is null: ${webviewParams!.onDownloadProgress == null}");
+          print(
+              "Flutter controller: onDownloadStarting callback is null: ${webviewParams!.onDownloadStarting == null}");
+          print(
+              "Flutter controller: onDownloadCompleted callback is null: ${webviewParams!.onDownloadCompleted == null}");
+        }
         if (webviewParams != null &&
             webviewParams!.onDownloadProgress != null) {
           Map<String, dynamic> arguments =
               call.arguments.cast<String, dynamic>();
+          print("Flutter controller: arguments received: $arguments");
           DownloadProgressEvent downloadProgressEvent =
               DownloadProgressEvent.fromMap(arguments)!;
+          print(
+              "Flutter controller: DownloadProgressEvent created: ${downloadProgressEvent.url} with progress ${downloadProgressEvent.progress}");
 
           webviewParams!.onDownloadProgress!(
               _controllerFromPlatform, downloadProgressEvent);
+          print("Flutter controller: onDownloadProgress callback executed");
+        } else {
+          print(
+              "Flutter controller: Skipping onDownloadProgress - webviewParams or callback is null");
         }
         break;
       case 'onDownloadStartRequest':
