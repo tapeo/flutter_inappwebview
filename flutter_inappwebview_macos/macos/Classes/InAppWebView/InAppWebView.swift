@@ -1450,7 +1450,7 @@ public class InAppWebView: WKWebView, WKUIDelegate,
         }
         
         let useOnNavigationResponse = settings?.useOnNavigationResponse
-        
+  
         if useOnNavigationResponse != nil, useOnNavigationResponse! {
             var decisionHandlerCalled = false
             let callback = WebViewChannelDelegate.NavigationResponseCallback()
@@ -1480,10 +1480,8 @@ public class InAppWebView: WKWebView, WKUIDelegate,
             if #available(macOS 11.3, *) {
                 // Check if content can be shown, if not, trigger download
                 if !navigationResponse.canShowMIMEType {
-                    if useOnNavigationResponse == nil || !useOnNavigationResponse! {
-                        decisionHandler(.download)
-                        return
-                    }
+                    decisionHandler(.download)
+                    return
                 }
             }
             
@@ -1493,9 +1491,7 @@ public class InAppWebView: WKWebView, WKUIDelegate,
                     // Check if it's a blob URL - if so, trigger download directly
                     if url.absoluteString.hasPrefix("blob:") {
                         if #available(macOS 11.3, *) {
-                            if useOnNavigationResponse == nil || !useOnNavigationResponse! {
-                                decisionHandler(.download)
-                            }
+                            decisionHandler(.download)
                         }
                         return
                     }
@@ -1509,9 +1505,7 @@ public class InAppWebView: WKWebView, WKUIDelegate,
                                                                    suggestedFilename: navigationResponse.response.suggestedFilename,
                                                                    textEncodingName: navigationResponse.response.textEncodingName)
                     channelDelegate?.onDownloadStarting(request: downloadStartRequest)
-                    if useOnNavigationResponse == nil || !useOnNavigationResponse! {
-                        decisionHandler(.cancel)
-                    }
+                    decisionHandler(.cancel)
                     return
                 }
             }
@@ -1520,27 +1514,21 @@ public class InAppWebView: WKWebView, WKUIDelegate,
             if #available(macOS 11.3, *) {
                 // Check if content can be shown, if not, trigger download
                 if !navigationResponse.canShowMIMEType {
-                    if useOnNavigationResponse == nil || !useOnNavigationResponse! {
-                        decisionHandler(.download)
-                        return
-                    }
+                    decisionHandler(.download)
+                    return
                 }
                 
                 let mimeType = navigationResponse.response.mimeType
                 if let url = navigationResponse.response.url, navigationResponse.isForMainFrame {
                     if url.scheme != "file", mimeType != nil, !mimeType!.starts(with: "text/") {
-                        if useOnNavigationResponse == nil || !useOnNavigationResponse! {
-                            decisionHandler(.download)
-                        }
+                        decisionHandler(.download)
                         return
                     }
                 }
             }
         }
         
-        if useOnNavigationResponse == nil || !useOnNavigationResponse! {
-            decisionHandler(.allow)
-        }
+        decisionHandler(.allow)
     }
     
     public func webView(_ webView: WKWebView, didStartProvisionalNavigation navigation: WKNavigation!) {
