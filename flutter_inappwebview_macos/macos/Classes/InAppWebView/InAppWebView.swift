@@ -54,6 +54,11 @@ public class InAppWebView: WKWebView, WKUIDelegate,
     private var exceptedBridgeSecret = NSUUID().uuidString
     private var javaScriptBridgeEnabled = true
     
+    // 1. Add URLSession and download tracking properties to InAppWebView
+    private var urlSession: URLSession?
+    private var activeDownloadTasks: [URL: URLSessionDownloadTask] = [:]
+    private var activeDownloadProgress: [URL: Double] = [:]
+    
     public override var acceptsFirstResponder: Bool { return true }
     
     init(id: Any?, plugin: InAppWebViewFlutterPlugin?, frame: CGRect, configuration: WKWebViewConfiguration,
@@ -1250,7 +1255,6 @@ public class InAppWebView: WKWebView, WKUIDelegate,
             }
         }
         callback.error = { [weak callback] (code: String, message: String?, details: Any?) in
-            print(code + ", " + (message ?? ""))
             callback?.defaultBehaviour(nil)
         }
         
@@ -1281,28 +1285,12 @@ public class InAppWebView: WKWebView, WKUIDelegate,
     
     @available(macOS 11.3, *)
     public func download(_ download: WKDownload, decideDestinationUsing response: URLResponse, suggestedFilename: String, completionHandler: @escaping (URL?) -> Void) {
-        // Check if this is a blob URL and handle with new download logic
-        if let url = response.url, url.absoluteString.hasPrefix("blob:") {
-            filePathDestination = generateDownloadDestination(with: suggestedFilename)
-            completionHandler(filePathDestination)
+        if let url = response.url {
+            startTrackedDownload(url: url, suggestedFilename: suggestedFilename)
+            completionHandler(nil) // Cancel WKDownload, we handle it ourselves
             return
         }
-        
-        // Use original logic for non-blob URLs
-        if let url = response.url, let useOnDownloadStart = settings?.useOnDownloadStart, useOnDownloadStart {
-            let downloadStartRequest = DownloadStartRequest(url: url.absoluteString,
-                                                            userAgent: nil,
-                                                            contentDisposition: nil,
-                                                            mimeType: response.mimeType,
-                                                            contentLength: response.expectedContentLength,
-                                                            suggestedFilename: suggestedFilename,
-                                                            textEncodingName: response.textEncodingName)
-            channelDelegate?.onDownloadStarting(request: downloadStartRequest)
-            completionHandler(nil)
-        } else {
-            filePathDestination = generateDownloadDestination(with: suggestedFilename)
-            completionHandler(filePathDestination)
-        }
+        completionHandler(nil)
     }
     
     @available(macOS 11.3, *)
@@ -1313,14 +1301,13 @@ public class InAppWebView: WKWebView, WKUIDelegate,
     @available(macOS 11.3, *)
     public func webView(_ webView: WKWebView, navigationResponse: WKNavigationResponse, didBecome download: WKDownload) {
         let response = navigationResponse.response
-        
+
         // Check if this is a blob URL and handle with new download logic
         if let url = response.url, url.absoluteString.hasPrefix("blob:") {
             download.delegate = self
             return
         }
         
-        // Use original logic for non-blob URLs
         if let url = response.url, let useOnDownloadStart = settings?.useOnDownloadStart, useOnDownloadStart {
             let downloadStartRequest = DownloadStartRequest(url: url.absoluteString,
                                                             userAgent: nil,
@@ -1329,8 +1316,25 @@ public class InAppWebView: WKWebView, WKUIDelegate,
                                                             contentLength: response.expectedContentLength,
                                                             suggestedFilename: response.suggestedFilename,
                                                             textEncodingName: response.textEncodingName)
-            channelDelegate?.onDownloadStarting(request: downloadStartRequest)
-            download.cancel { _ in }
+            let callback = WebViewChannelDelegate.DownloadStartCallback()
+            callback.nonNullSuccess = { [weak self] (proceed: Bool) in
+                guard let self = self else { return false }
+                if proceed {
+                    self.startTrackedDownload(url: url, suggestedFilename: response.suggestedFilename)
+                } else {
+                    download.cancel { _ in }
+                }
+                return false
+            }
+            callback.defaultBehaviour = { [weak self] (_: Bool?) in
+                // Default: cancel download if no response
+                download.cancel { _ in }
+            }
+            callback.error = { [weak self] (code: String, message: String?, details: Any?) in
+                // On error: cancel download
+                download.cancel { _ in }
+            }
+            channelDelegate?.onDownloadStartRequest(request: downloadStartRequest, callback: callback)
         } else {
             download.delegate = self
         }
@@ -1444,7 +1448,6 @@ public class InAppWebView: WKWebView, WKUIDelegate,
             }
         }
         callback.error = { [weak callback] (code: String, message: String?, details: Any?) in
-            print(code + ", " + (message ?? ""))
             callback?.defaultBehaviour(nil)
         }
         
@@ -1489,7 +1492,6 @@ public class InAppWebView: WKWebView, WKUIDelegate,
                 }
             }
             callback.error = { [weak callback] (code: String, message: String?, details: Any?) in
-                print(code + ", " + (message ?? ""))
                 callback?.defaultBehaviour(nil)
             }
             
@@ -1701,7 +1703,6 @@ public class InAppWebView: WKWebView, WKUIDelegate,
                 }
             }
             callback.error = { [weak callback] (code: String, message: String?, details: Any?) in
-                print(code + ", " + (message ?? ""))
                 callback?.defaultBehaviour(nil)
             }
             
@@ -1770,7 +1771,6 @@ public class InAppWebView: WKWebView, WKUIDelegate,
                 }
             }
             callback.error = { [weak callback] (code: String, message: String?, details: Any?) in
-                print(code + ", " + (message ?? ""))
                 callback?.defaultBehaviour(nil)
             }
             
@@ -1835,7 +1835,6 @@ public class InAppWebView: WKWebView, WKUIDelegate,
                 }
             }
             callback.error = { [weak callback] (code: String, message: String?, details: Any?) in
-                print(code + ", " + (message ?? ""))
                 callback?.defaultBehaviour(nil)
             }
             
@@ -2213,109 +2212,6 @@ public class InAppWebView: WKWebView, WKUIDelegate,
         channelDelegate?.onDidReceiveServerRedirectForProvisionalNavigation()
     }
     
-//    @available(iOS 13.0, *)
-//    public func webView(_ webView: WKWebView,
-//                        contextMenuConfigurationForElement elementInfo: WKContextMenuElementInfo,
-//                        completionHandler: @escaping (UIContextMenuConfiguration?) -> Void) {
-//        print("contextMenuConfigurationForElement")
-//        let actionProvider: UIContextMenuActionProvider = { _ in
-//            let editMenu = UIMenu(title: "Edit...", children: [
-//                UIAction(title: "Copy") { action in
-//
-//                },
-//                UIAction(title: "Duplicate") { action in
-//
-//                }
-//            ])
-//            return UIMenu(title: "Title", children: [
-//                UIAction(title: "Share") { action in
-//
-//                },
-//                editMenu
-//            ])
-//        }
-//        let contextMenuConfiguration = UIContextMenuConfiguration(identifier: nil, previewProvider: nil, actionProvider: actionProvider)
-//        //completionHandler(contextMenuConfiguration)
-//        completionHandler(nil)
-////        onContextMenuConfigurationForElement(linkURL: elementInfo.linkURL?.absoluteString, result: nil/*{(result) -> Void in
-////            if result is FlutterError {
-////                print((result as! FlutterError).message ?? "")
-////            }
-////            else if (result as? NSObject) == FlutterMethodNotImplemented {
-////                completionHandler(nil)
-////            }
-////            else {
-////                var response: [String: Any]
-////                if let r = result {
-////                    response = r as! [String: Any]
-////                    var action = response["action"] as? Int
-////                    action = action != nil ? action : 0;
-////                    switch action {
-////                        case 0:
-////                            break
-////                        case 1:
-////                            break
-////                        default:
-////                            completionHandler(nil)
-////                    }
-////                    return;
-////                }
-////                completionHandler(nil)
-////            }
-////        }*/)
-//    }
-////
-//    @available(iOS 13.0, *)
-//    public func webView(_ webView: WKWebView,
-//                        contextMenuDidEndForElement elementInfo: WKContextMenuElementInfo) {
-//        print("contextMenuDidEndForElement")
-//        print(elementInfo)
-//        //onContextMenuDidEndForElement(linkURL: elementInfo.linkURL?.absoluteString)
-//    }
-//
-//    @available(iOS 13.0, *)
-//    public func webView(_ webView: WKWebView,
-//                        contextMenuForElement elementInfo: WKContextMenuElementInfo,
-//                        willCommitWithAnimator animator: UIContextMenuInteractionCommitAnimating) {
-//        print("willCommitWithAnimator")
-//        print(elementInfo)
-////        onWillCommitWithAnimator(linkURL: elementInfo.linkURL?.absoluteString, result: nil/*{(result) -> Void in
-////            if result is FlutterError {
-////                print((result as! FlutterError).message ?? "")
-////            }
-////            else if (result as? NSObject) == FlutterMethodNotImplemented {
-////
-////            }
-////            else {
-////                var response: [String: Any]
-////                if let r = result {
-////                    response = r as! [String: Any]
-////                    var action = response["action"] as? Int
-////                    action = action != nil ? action : 0;
-//////                    switch action {
-//////                        case 0:
-//////                            break
-//////                        case 1:
-//////                            break
-//////                        default:
-//////
-//////                    }
-////                    return;
-////                }
-////
-////            }
-////        }*/)
-//    }
-//
-//    @available(iOS 13.0, *)
-//    public func webView(_ webView: WKWebView,
-//                        contextMenuWillPresentForElement elementInfo: WKContextMenuElementInfo) {
-//        print("contextMenuWillPresentForElement")
-//        print(elementInfo.linkURL)
-//        //onContextMenuWillPresentForElement(linkURL: elementInfo.linkURL?.absoluteString)
-//    }
-    
-    
     // https://stackoverflow.com/a/42840541/4637638
     public func isVideoPlayerWindow(_ notificationObject: AnyObject?) -> Bool {
         if let obj = notificationObject, let clazz = NSClassFromString("WebCoreFullScreenWindow") {
@@ -2349,26 +2245,6 @@ public class InAppWebView: WKWebView, WKUIDelegate,
             inFullscreen = false
         }
     }
-    
-//    public func onContextMenuConfigurationForElement(linkURL: String?, result: FlutterResult?) {
-//        let arguments: [String: Any?] = ["linkURL": linkURL]
-//        channel?.invokeMethod("onContextMenuConfigurationForElement", arguments: arguments, result: result)
-//    }
-//
-//    public func onContextMenuDidEndForElement(linkURL: String?) {
-//        let arguments: [String: Any?] = ["linkURL": linkURL]
-//        channel?.invokeMethod("onContextMenuDidEndForElement", arguments: arguments)
-//    }
-//
-//    public func onWillCommitWithAnimator(linkURL: String?, result: FlutterResult?) {
-//        let arguments: [String: Any?] = ["linkURL": linkURL]
-//        channel?.invokeMethod("onWillCommitWithAnimator", arguments: arguments, result: result)
-//    }
-//
-//    public func onContextMenuWillPresentForElement(linkURL: String?) {
-//        let arguments: [String: Any?] = ["linkURL": linkURL]
-//        channel?.invokeMethod("onContextMenuWillPresentForElement", arguments: arguments)
-//    }
     
     public func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
         guard javaScriptBridgeEnabled else {
@@ -2441,7 +2317,6 @@ public class InAppWebView: WKWebView, WKUIDelegate,
                             }
                         }
                         callback.error = { [weak callback] (code: String, message: String?, details: Any?) in
-                            print(code + ", " + (message ?? ""))
                             callback?.defaultBehaviour(nil)
                         }
                         webView.channelDelegate?.onPrintRequest(url: webView.url, printJobId: printJobId, callback: callback)
@@ -3011,39 +2886,55 @@ if(window.\(JavaScriptBridgeJS.get_JAVASCRIPT_BRIDGE_NAME())[\(_callHandlerID)] 
         windowBeforeCreatedCallbacks.removeAll()
     }
     
-    private func generateDownloadDestination(with suggestedFilename: String) -> URL? {
-        // Use configured download path or default to Downloads folder
+    private func generateDownloadDestination(with suggestedFilename: String, mimeType: String?) -> URL? {
         let downloadDirectory: URL
         if let downloadPath = settings?.downloadPath, !downloadPath.isEmpty {
             downloadDirectory = URL(fileURLWithPath: downloadPath)
         } else {
             downloadDirectory = FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask).first ?? FileManager.default.temporaryDirectory
         }
-        
-        // Create download directory if it doesn't exist
         do {
             try FileManager.default.createDirectory(at: downloadDirectory, withIntermediateDirectories: true, attributes: nil)
         } catch {
             print("Failed to create download directory: \(error.localizedDescription)")
             return nil
         }
-        
-        let fileName = suggestedFilename.isEmpty ? "download" : suggestedFilename
-        let fileURL = downloadDirectory.appendingPathComponent(fileName)
-        
-        // If file already exists, append a number to make it unique
+        // Determine correct extension from MIME type
+        var ext = (suggestedFilename as NSString).pathExtension
+        if let mimeType = mimeType {
+            switch mimeType {
+            case "image/svg+xml": ext = "svg"
+            case "image/png": ext = "png"
+            case "image/jpeg": ext = "jpg"
+            case "image/gif": ext = "gif"
+            case "application/pdf": ext = "pdf"
+            case "text/plain": ext = "txt"
+            case "text/html": ext = "html"
+            case "application/zip": ext = "zip"
+            default: break
+            }
+        }
+        var fileName = (suggestedFilename as NSString).deletingPathExtension
+        if ext.isEmpty, let mimeType = mimeType {
+            switch mimeType {
+            case "image/svg+xml": ext = "svg"
+            case "image/png": ext = "png"
+            case "image/jpeg": ext = "jpg"
+            case "image/gif": ext = "gif"
+            case "application/pdf": ext = "pdf"
+            case "text/plain": ext = "txt"
+            case "text/html": ext = "html"
+            case "application/zip": ext = "zip"
+            default: ext = "dat"
+            }
+        }
+        var fileURL = downloadDirectory.appendingPathComponent(fileName).appendingPathExtension(ext)
         var counter = 1
-        var uniqueFileURL = fileURL
-        let fileExtension = fileURL.pathExtension
-        let fileNameWithoutExtension = fileURL.deletingPathExtension().lastPathComponent
-        
-        while FileManager.default.fileExists(atPath: uniqueFileURL.path) {
-            let newFileName = "\(fileNameWithoutExtension)_\(counter).\(fileExtension)"
-            uniqueFileURL = downloadDirectory.appendingPathComponent(newFileName)
+        while FileManager.default.fileExists(atPath: fileURL.path) {
+            fileURL = downloadDirectory.appendingPathComponent("\(fileName)_\(counter)").appendingPathExtension(ext)
             counter += 1
         }
-        
-        return uniqueFileURL
+        return fileURL
     }
     
     public func dispose() {
@@ -3099,5 +2990,98 @@ if(window.\(JavaScriptBridgeJS.get_JAVASCRIPT_BRIDGE_NAME())[\(_callHandlerID)] 
     
     deinit {
         debugPrint("InAppWebView - dealloc")
+    }
+
+    // 3. Add a method to start a download with progress tracking
+    public func startTrackedDownload(url: URL, suggestedFilename: String?) {
+        if urlSession == nil {
+            let config = URLSessionConfiguration.default
+            urlSession = URLSession(configuration: config, delegate: self, delegateQueue: nil)
+        }
+        let task = urlSession!.downloadTask(with: url)
+        activeDownloadTasks[url] = task
+        activeDownloadProgress[url] = 0
+        task.resume()
+        // Optionally, send a start event
+        let request = DownloadStartRequest(
+            url: url.absoluteString,
+            userAgent: nil,
+            contentDisposition: nil,
+            mimeType: nil,
+            contentLength: 0,
+            suggestedFilename: suggestedFilename,
+            textEncodingName: nil
+        )
+        DispatchQueue.main.async {
+            self.channelDelegate?.onDownloadStarting(request: request)
+        }
+    }
+}
+
+extension InAppWebView: URLSessionDownloadDelegate {
+    public func urlSession(_ session: URLSession, downloadTask: URLSessionDownloadTask, didWriteData bytesWritten: Int64, totalBytesWritten: Int64, totalBytesExpectedToWrite: Int64) {
+        guard let url = downloadTask.originalRequest?.url else { return }
+        let progress = totalBytesExpectedToWrite > 0 ? Double(totalBytesWritten) / Double(totalBytesExpectedToWrite) : 0
+        activeDownloadProgress[url] = progress
+        DispatchQueue.main.async {
+            self.channelDelegate?.onDownloadProgress(url: url.absoluteString, progress: progress, totalBytes: totalBytesExpectedToWrite, downloadedBytes: totalBytesWritten)
+        }
+    }
+    public func urlSession(_ session: URLSession, downloadTask: URLSessionDownloadTask, didFinishDownloadingTo location: URL) {
+        guard let url = downloadTask.originalRequest?.url else { return }
+        let suggestedFilename = downloadTask.response?.suggestedFilename ?? url.lastPathComponent
+        let mimeType = downloadTask.response?.mimeType
+        let destinationURL = generateDownloadDestination(with: suggestedFilename, mimeType: mimeType) ?? location
+        do {
+            if FileManager.default.fileExists(atPath: destinationURL.path) {
+                try FileManager.default.removeItem(at: destinationURL)
+            }
+            try FileManager.default.moveItem(at: location, to: destinationURL)
+            let attributes = try FileManager.default.attributesOfItem(atPath: destinationURL.path)
+            let totalBytes = (attributes[.size] as? NSNumber)?.int64Value
+            DispatchQueue.main.async {
+                self.channelDelegate?.onDownloadCompleted(
+                    originalUrl: url.absoluteString,
+                    suggestedFilename: suggestedFilename,
+                    filePath: destinationURL.path,
+                    mimeType: mimeType,
+                    totalBytes: totalBytes,
+                    isSuccessful: true,
+                    error: nil
+                )
+            }
+        } catch {
+            DispatchQueue.main.async {
+                self.channelDelegate?.onDownloadCompleted(
+                    originalUrl: url.absoluteString,
+                    suggestedFilename: suggestedFilename,
+                    filePath: nil,
+                    mimeType: mimeType,
+                    totalBytes: nil,
+                    isSuccessful: false,
+                    error: error.localizedDescription
+                )
+            }
+        }
+        activeDownloadTasks.removeValue(forKey: url)
+        activeDownloadProgress.removeValue(forKey: url)
+    }
+    public func urlSession(_ session: URLSession, task: URLSessionTask, didCompleteWithError error: Error?) {
+        guard let url = task.originalRequest?.url else { return }
+        if let error = error {
+            DispatchQueue.main.async {
+                self.channelDelegate?.onDownloadCompleted(
+                    originalUrl: url.absoluteString,
+                    suggestedFilename: task.response?.suggestedFilename ?? url.lastPathComponent,
+                    filePath: nil,
+                    mimeType: task.response?.mimeType,
+                    totalBytes: nil,
+                    isSuccessful: false,
+                    error: error.localizedDescription
+                )
+            }
+        }
+        activeDownloadTasks.removeValue(forKey: url)
+        activeDownloadProgress.removeValue(forKey: url)
     }
 }

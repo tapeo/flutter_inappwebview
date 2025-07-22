@@ -366,6 +366,8 @@ class InAppBrowser implements PlatformInAppBrowserEvents {
     return null;
   }
 
+  void onDownloadProgress(DownloadProgressEvent downloadProgressEvent) {}
+
   @override
   void onEnterFullscreen() {}
 

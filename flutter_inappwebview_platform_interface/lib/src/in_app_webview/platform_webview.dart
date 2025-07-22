@@ -8,6 +8,7 @@ import '../find_interaction/platform_find_interaction_controller.dart';
 import '../platform_webview_feature.dart';
 import '../print_job/main.dart';
 import '../pull_to_refresh/platform_pull_to_refresh_controller.dart';
+import '../types/download_progress_event.dart';
 import '../types/main.dart';
 import '../web_uri.dart';
 import 'in_app_webview_settings.dart';
@@ -1259,6 +1260,14 @@ class PlatformWebViewCreationParams<T> {
   ///{@endtemplate}
   final PlatformFindInteractionController? findInteractionController;
 
+  ///{@template flutter_inappwebview_platform_interface.PlatformWebViewCreationParams.onDownloadProgress}
+  ///Event fired when a download makes progress.
+  ///[downloadProgressEvent] contains information about the download progress including url, progress, totalBytes, and downloadedBytes.
+  ///
+  ///**Officially Supported Platforms/Implementations**:
+  ///- MacOS
+  final void Function(T controller, DownloadProgressEvent downloadProgressEvent)? onDownloadProgress;
+
   ///{@macro flutter_inappwebview_platform_interface.PlatformWebViewCreationParams}
   const PlatformWebViewCreationParams(
       {this.controllerFromPlatform,
@@ -1375,5 +1384,6 @@ class PlatformWebViewCreationParams<T> {
       this.contextMenu,
       this.initialUserScripts,
       this.pullToRefreshController,
-      this.findInteractionController});
+      this.findInteractionController,
+      this.onDownloadProgress});
 }

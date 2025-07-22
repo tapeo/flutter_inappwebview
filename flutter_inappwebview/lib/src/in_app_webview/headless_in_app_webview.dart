@@ -98,6 +98,7 @@ class HeadlessInAppWebView {
       @Deprecated('Use onDownloadStarting instead') void Function(InAppWebViewController controller, Uri url)? onDownloadStart,
       @Deprecated('Use onDownloadStarting instead') void Function(InAppWebViewController controller, DownloadStartRequest downloadStartRequest)? onDownloadStartRequest,
       FutureOr<DownloadStartResponse?> Function(InAppWebViewController controller, DownloadStartRequest downloadStartRequest)? onDownloadStarting,
+      void Function(InAppWebViewController controller, DownloadProgressEvent downloadProgressEvent)? onDownloadProgress,
       @Deprecated('Use FindInteractionController.onFindResultReceived instead') void Function(InAppWebViewController controller, int activeMatchOrdinal, int numberOfMatches, bool isDoneCounting)? onFindResultReceived,
       FutureOr<JsAlertResponse?> Function(InAppWebViewController controller, JsAlertRequest jsAlertRequest)? onJsAlert,
       FutureOr<JsConfirmResponse?> Function(InAppWebViewController controller, JsConfirmRequest jsConfirmRequest)? onJsConfirm,
@@ -239,6 +240,10 @@ class HeadlessInAppWebView {
           onDownloadStarting: onDownloadStarting != null
               ? (controller, downloadStartRequest) =>
                   onDownloadStarting.call(controller, downloadStartRequest)
+              : null,
+          onDownloadProgress: onDownloadProgress != null
+              ? (controller, downloadProgressEvent) => onDownloadProgress.call(
+                  controller, downloadProgressEvent as DownloadProgressEvent)
               : null,
           onLoadResourceCustomScheme: onLoadResourceCustomScheme != null
               ? (controller, url) =>

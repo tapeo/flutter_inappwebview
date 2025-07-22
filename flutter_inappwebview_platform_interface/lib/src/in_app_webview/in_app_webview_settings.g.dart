@@ -1918,6 +1918,7 @@ class InAppWebViewSettings {
           ? Set<String>.from(
               map['pluginScriptsOriginAllowList']!.cast<String>())
           : null,
+      profileId: map['profileId'],
       regexToAllowSyncUrlLoading: map['regexToAllowSyncUrlLoading'],
       regexToCancelSubFramesLoading: map['regexToCancelSubFramesLoading'],
       rendererPriorityPolicy: RendererPriorityPolicy.fromMap(
@@ -1986,7 +1987,6 @@ class InAppWebViewSettings {
         map['browserAcceleratorKeysEnabled'];
     instance.builtInZoomControls = map['builtInZoomControls'];
     instance.cacheEnabled = map['cacheEnabled'];
-    instance.profileId = map['profileId'];
     instance.cacheMode = switch (enumMethod ?? EnumMethod.nativeValue) {
       EnumMethod.nativeValue => CacheMode.fromNativeValue(map['cacheMode']),
       EnumMethod.value => CacheMode.fromValue(map['cacheMode']),

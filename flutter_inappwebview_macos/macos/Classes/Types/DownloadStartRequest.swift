@@ -8,13 +8,13 @@
 import Foundation
 
 public class DownloadStartRequest: NSObject {
-    var url: String
-    var userAgent: String?
-    var contentDisposition: String?
-    var mimeType: String?
-    var contentLength: Int64
-    var suggestedFilename: String?
-    var textEncodingName: String?
+    public var url: String
+    public var userAgent: String?
+    public var contentDisposition: String?
+    public var mimeType: String?
+    public var contentLength: Int64
+    public var suggestedFilename: String?
+    public var textEncodingName: String?
     
     public init(url: String, userAgent: String?, contentDisposition: String?,
                 mimeType: String?, contentLength: Int64,

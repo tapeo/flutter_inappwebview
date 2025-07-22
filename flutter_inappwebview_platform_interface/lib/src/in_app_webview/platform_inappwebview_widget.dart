@@ -45,6 +45,7 @@ class PlatformInAppWebViewWidgetCreationParams
       super.onDownloadStartRequest,
       super.onDownloadStarting,
       super.onDownloadCompleted,
+      super.onDownloadProgress,
       @Deprecated('Use onLoadResourceWithCustomScheme instead')
       super.onLoadResourceCustomScheme,
       super.onLoadResourceWithCustomScheme,
@@ -173,6 +174,7 @@ class PlatformInAppWebViewWidgetCreationParams
   ///- iOS
   ///- Web
   ///- MacOS
+  ///- Windows
   final PlatformHeadlessInAppWebView? headlessWebView;
 
   ///Used to keep alive this WebView.

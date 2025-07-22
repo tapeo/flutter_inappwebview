@@ -720,6 +720,16 @@ public class WebViewChannelDelegate: ChannelDelegate {
         channel?.invokeMethod("onDownloadCompleted", arguments: arguments)
     }
     
+    public func onDownloadProgress(url: String, progress: Double, totalBytes: Int64, downloadedBytes: Int64) {
+        let arguments: [String: Any?] = [
+            "url": url,
+            "progress": progress,
+            "totalBytes": totalBytes,
+            "downloadedBytes": downloadedBytes
+        ]
+        channel?.invokeMethod("onDownloadProgress", arguments: arguments)
+    }
+    
     public func onCreateContextMenu(hitTestResult: HitTestResult) {
         channel?.invokeMethod("onCreateContextMenu", arguments: hitTestResult.toMap())
     }
@@ -1200,6 +1210,26 @@ public class WebViewChannelDelegate: ChannelDelegate {
             "printJobId": printJobId,
         ]
         channel?.invokeMethod("onPrintRequest", arguments: arguments, callback: callback)
+    }
+    
+    public class DownloadStartCallback: BaseCallbackResult<Bool> {
+        override init() {
+            super.init()
+            self.decodeResult = { (obj: Any?) in
+                return obj is Bool && (obj as! Bool)
+            }
+        }
+        deinit {
+            self.defaultBehaviour(nil)
+        }
+    }
+    
+    public func onDownloadStartRequest(request: DownloadStartRequest, callback: DownloadStartCallback) {
+        if channel == nil {
+            callback.defaultBehaviour(nil)
+            return
+        }
+        channel?.invokeMethod("onDownloadStartRequest", arguments: request.toMap(), callback: callback)
     }
     
     internal func _onMouseDown(callback: @escaping () -> Void) {

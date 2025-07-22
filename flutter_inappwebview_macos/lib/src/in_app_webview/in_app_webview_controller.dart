@@ -38,6 +38,10 @@ class MacOSInAppWebViewControllerCreationParams
   }
 }
 
+/// Callback type for deciding whether to proceed with a download.
+typedef ShouldProceedWithDownloadCallback = Future<bool> Function(
+    DownloadStartRequest request);
+
 ///Controls a WebView, such as an [InAppWebView] widget instance, a [MacOSHeadlessInAppWebView] instance or [MacOSInAppBrowser] WebView instance.
 ///
 ///If you are using the [InAppWebView] widget, an [InAppWebViewController] instance can be obtained by setting the [InAppWebView.onWebViewCreated]
@@ -1569,6 +1573,36 @@ class MacOSInAppWebViewController extends PlatformInAppWebViewController
           }
         }
         break;
+      case "onDownloadProgress":
+        if (webviewParams != null &&
+            webviewParams!.onDownloadProgress != null) {
+          Map<String, dynamic> arguments =
+              call.arguments.cast<String, dynamic>();
+          DownloadProgressEvent downloadProgressEvent =
+              DownloadProgressEvent.fromMap(arguments)!;
+
+          webviewParams!.onDownloadProgress!(
+              _controllerFromPlatform, downloadProgressEvent);
+        }
+        break;
+      case 'onDownloadStartRequest':
+        final map = call.arguments;
+        if (onDownloadStartRequest != null && map != null) {
+          final request =
+              DownloadStartRequest.fromMap(Map<String, dynamic>.from(map));
+          if (request != null) {
+            try {
+              final proceed = await onDownloadStartRequest!(request);
+              return proceed;
+            } catch (_) {
+              return false;
+            }
+          } else {
+            return false;
+          }
+        } else {
+          return false;
+        }
       default:
         throw UnimplementedError("Unimplemented ${call.method} method");
     }
@@ -2754,6 +2788,9 @@ class MacOSInAppWebViewController extends PlatformInAppWebViewController
       _webMessageListeners.clear();
     }
   }
+
+  /// The callback set by the user to decide whether to proceed with a download.
+  ShouldProceedWithDownloadCallback? onDownloadStartRequest;
 }
 
 extension InternalInAppWebViewController on MacOSInAppWebViewController {
