@@ -1348,7 +1348,6 @@ public class InAppWebView: WKWebView, WKUIDelegate,
 
         // Notify that download completed successfully
         if let channelDelegate = channelDelegate {
-            // Get file size if available
             var totalBytes: Int64? = nil
             do {
                 let attributes = try FileManager.default.attributesOfItem(atPath: filePathDestination.path)
@@ -1358,47 +1357,22 @@ public class InAppWebView: WKWebView, WKUIDelegate,
             } catch {
                 print("Could not get file size: \(error.localizedDescription)")
             }
-            
-            // Get the original URL from the download
+
             let originalUrl = download.originalRequest?.url?.absoluteString
-            
-            // Get suggested filename from the file path
             let suggestedFilename = filePathDestination.lastPathComponent
-            
-            // Try to determine MIME type from file extension
-            var mimeType: String? = nil
-            let fileExtension = filePathDestination.pathExtension.lowercased()
-            switch fileExtension {
-            case "pdf":
-                mimeType = "application/pdf"
-            case "jpg", "jpeg":
-                mimeType = "image/jpeg"
-            case "png":
-                mimeType = "image/png"
-            case "gif":
-                mimeType = "image/gif"
-            case "txt":
-                mimeType = "text/plain"
-            case "html", "htm":
-                mimeType = "text/html"
-            case "zip":
-                mimeType = "application/zip"
-            default:
-                mimeType = "application/octet-stream"
-            }
-            
+
+            // No mime type detection, just use nil
             channelDelegate.onDownloadCompleted(
                 originalUrl: originalUrl,
                 suggestedFilename: suggestedFilename,
                 filePath: filePathDestination.path,
-                mimeType: mimeType,
+                mimeType: nil,
                 totalBytes: totalBytes,
                 isSuccessful: true,
                 error: nil
             )
         }
-        
-        // Reset the destination path
+
         self.filePathDestination = nil
     }
     
@@ -2886,57 +2860,6 @@ if(window.\(JavaScriptBridgeJS.get_JAVASCRIPT_BRIDGE_NAME())[\(_callHandlerID)] 
         windowBeforeCreatedCallbacks.removeAll()
     }
     
-    private func generateDownloadDestination(with suggestedFilename: String, mimeType: String?) -> URL? {
-        let downloadDirectory: URL
-        if let downloadPath = settings?.downloadPath, !downloadPath.isEmpty {
-            downloadDirectory = URL(fileURLWithPath: downloadPath)
-        } else {
-            downloadDirectory = FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask).first ?? FileManager.default.temporaryDirectory
-        }
-        do {
-            try FileManager.default.createDirectory(at: downloadDirectory, withIntermediateDirectories: true, attributes: nil)
-        } catch {
-            print("Failed to create download directory: \(error.localizedDescription)")
-            return nil
-        }
-        // Determine correct extension from MIME type
-        var ext = (suggestedFilename as NSString).pathExtension
-        if let mimeType = mimeType {
-            switch mimeType {
-            case "image/svg+xml": ext = "svg"
-            case "image/png": ext = "png"
-            case "image/jpeg": ext = "jpg"
-            case "image/gif": ext = "gif"
-            case "application/pdf": ext = "pdf"
-            case "text/plain": ext = "txt"
-            case "text/html": ext = "html"
-            case "application/zip": ext = "zip"
-            default: break
-            }
-        }
-        var fileName = (suggestedFilename as NSString).deletingPathExtension
-        if ext.isEmpty, let mimeType = mimeType {
-            switch mimeType {
-            case "image/svg+xml": ext = "svg"
-            case "image/png": ext = "png"
-            case "image/jpeg": ext = "jpg"
-            case "image/gif": ext = "gif"
-            case "application/pdf": ext = "pdf"
-            case "text/plain": ext = "txt"
-            case "text/html": ext = "html"
-            case "application/zip": ext = "zip"
-            default: ext = "dat"
-            }
-        }
-        var fileURL = downloadDirectory.appendingPathComponent(fileName).appendingPathExtension(ext)
-        var counter = 1
-        while FileManager.default.fileExists(atPath: fileURL.path) {
-            fileURL = downloadDirectory.appendingPathComponent("\(fileName)_\(counter)").appendingPathExtension(ext)
-            counter += 1
-        }
-        return fileURL
-    }
-    
     public func dispose() {
         channelDelegate?.dispose()
         channelDelegate = nil
@@ -3030,8 +2953,18 @@ extension InAppWebView: URLSessionDownloadDelegate {
     public func urlSession(_ session: URLSession, downloadTask: URLSessionDownloadTask, didFinishDownloadingTo location: URL) {
         guard let url = downloadTask.originalRequest?.url else { return }
         let suggestedFilename = downloadTask.response?.suggestedFilename ?? url.lastPathComponent
-        let mimeType = downloadTask.response?.mimeType
-        let destinationURL = generateDownloadDestination(with: suggestedFilename, mimeType: mimeType) ?? location
+        let downloadDirectory: URL
+        if let downloadPath = settings?.downloadPath, !downloadPath.isEmpty {
+            downloadDirectory = URL(fileURLWithPath: downloadPath)
+        } else {
+            downloadDirectory = FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask).first ?? FileManager.default.temporaryDirectory
+        }
+        do {
+            try FileManager.default.createDirectory(at: downloadDirectory, withIntermediateDirectories: true, attributes: nil)
+        } catch {
+            print("Failed to create download directory: \(error.localizedDescription)")
+        }
+        let destinationURL = downloadDirectory.appendingPathComponent(suggestedFilename)
         do {
             if FileManager.default.fileExists(atPath: destinationURL.path) {
                 try FileManager.default.removeItem(at: destinationURL)
@@ -3044,7 +2977,7 @@ extension InAppWebView: URLSessionDownloadDelegate {
                     originalUrl: url.absoluteString,
                     suggestedFilename: suggestedFilename,
                     filePath: destinationURL.path,
-                    mimeType: mimeType,
+                    mimeType: nil,
                     totalBytes: totalBytes,
                     isSuccessful: true,
                     error: nil
@@ -3056,7 +2989,7 @@ extension InAppWebView: URLSessionDownloadDelegate {
                     originalUrl: url.absoluteString,
                     suggestedFilename: suggestedFilename,
                     filePath: nil,
-                    mimeType: mimeType,
+                    mimeType: nil,
                     totalBytes: nil,
                     isSuccessful: false,
                     error: error.localizedDescription
