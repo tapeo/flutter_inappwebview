@@ -1285,12 +1285,53 @@ public class InAppWebView: WKWebView, WKUIDelegate,
     
     @available(macOS 11.3, *)
     public func download(_ download: WKDownload, decideDestinationUsing response: URLResponse, suggestedFilename: String, completionHandler: @escaping (URL?) -> Void) {
+        if let url = response.url, url.absoluteString.hasPrefix("blob:") {
+            filePathDestination = generateDownloadDestination(with: suggestedFilename)
+            completionHandler(filePathDestination)
+            return
+        }
+
         if let url = response.url {
             startTrackedDownload(url: url, suggestedFilename: suggestedFilename)
             completionHandler(nil) // Cancel WKDownload, we handle it ourselves
             return
         }
         completionHandler(nil)
+    }
+
+    private func generateDownloadDestination(with suggestedFilename: String) -> URL? {
+        // Use configured download path or default to Downloads folder
+        let downloadDirectory: URL
+        if let downloadPath = settings?.downloadPath, !downloadPath.isEmpty {
+            downloadDirectory = URL(fileURLWithPath: downloadPath)
+        } else {
+            downloadDirectory = FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask).first ?? FileManager.default.temporaryDirectory
+        }
+        
+        // Create download directory if it doesn't exist
+        do {
+            try FileManager.default.createDirectory(at: downloadDirectory, withIntermediateDirectories: true, attributes: nil)
+        } catch {
+            print("Failed to create download directory: \(error.localizedDescription)")
+            return nil
+        }
+        
+        let fileName = suggestedFilename.isEmpty ? "download" : suggestedFilename
+        let fileURL = downloadDirectory.appendingPathComponent(fileName)
+        
+        // If file already exists, append a number to make it unique
+        var counter = 1
+        var uniqueFileURL = fileURL
+        let fileExtension = fileURL.pathExtension
+        let fileNameWithoutExtension = fileURL.deletingPathExtension().lastPathComponent
+        
+        while FileManager.default.fileExists(atPath: uniqueFileURL.path) {
+            let newFileName = "\(fileNameWithoutExtension)_\(counter).\(fileExtension)"
+            uniqueFileURL = downloadDirectory.appendingPathComponent(newFileName)
+            counter += 1
+        }
+        
+        return uniqueFileURL
     }
     
     @available(macOS 11.3, *)
@@ -1300,15 +1341,7 @@ public class InAppWebView: WKWebView, WKUIDelegate,
     
     @available(macOS 11.3, *)
     public func webView(_ webView: WKWebView, navigationResponse: WKNavigationResponse, didBecome download: WKDownload) {
-        let response = navigationResponse.response
-
-        // Check if this is a blob URL and handle with new download logic
-        if let url = response.url, url.absoluteString.hasPrefix("blob:") {
-            download.delegate = self
-            return
-        }
-        
-        download.delegate = self
+        download.delegate = self       
     }
     
     @available(macOS 11.3, *)
