@@ -1346,8 +1346,38 @@ public class InAppWebView: WKWebView, WKUIDelegate,
     
     @available(macOS 11.3, *)
     public func downloadDidFinish(_ download: WKDownload) {
-        // This method is called when WKDownload finishes, but we handle completion in URLSession delegate
-        // No need to do anything here as our startTrackedDownload handles everything
+        // Handle completion for blob downloads that use filePathDestination
+        if let destination = filePathDestination {
+            let suggestedFilename = destination.lastPathComponent
+            do {
+                let attributes = try FileManager.default.attributesOfItem(atPath: destination.path)
+                let totalBytes = (attributes[.size] as? NSNumber)?.int64Value
+                DispatchQueue.main.async {
+                    self.channelDelegate?.onDownloadCompleted(
+                        originalUrl: nil,
+                        suggestedFilename: suggestedFilename,
+                        filePath: destination.path,
+                        mimeType: nil,
+                        totalBytes: totalBytes,
+                        isSuccessful: true,
+                        error: nil
+                    )
+                }
+            } catch {
+                DispatchQueue.main.async {
+                    self.channelDelegate?.onDownloadCompleted(
+                        originalUrl: nil,
+                        suggestedFilename: suggestedFilename,
+                        filePath: destination.path,
+                        mimeType: nil,
+                        totalBytes: nil,
+                        isSuccessful: false,
+                        error: error.localizedDescription
+                    )
+                }
+            }
+            filePathDestination = nil
+        }
     }
     
     @available(macOS 11.3, *)
