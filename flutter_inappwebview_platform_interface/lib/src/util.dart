@@ -625,8 +625,6 @@ extension InternalChannelController on ChannelController {
         'Method Call Handler for ${runtimeType} not initialized!');
 
     channel?.setMethodCallHandler((call) async {
-      print(
-          "Method channel received call: ${call.method} with arguments: ${call.arguments}");
       if (disposed) return null;
       try {
         return await handler!(call);
