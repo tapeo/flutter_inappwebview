@@ -51,6 +51,12 @@ public class InAppWebViewManager: ChannelDelegate {
                 clearAllCache(includeDiskFiles: includeDiskFiles, completionHandler: {
                     result(true)
                 })
+            case "clearCacheByDomain":
+                let domain = arguments!["domain"] as! String
+                let includeDiskFiles = arguments!["includeDiskFiles"] as! Bool
+                clearCacheByDomain(domain: domain, includeDiskFiles: includeDiskFiles, completionHandler: {
+                    result(true)
+                })
             case "clearContentBlockerCache":
                 if #available(macOS 10.13, *) {
                     ContentBlockerManager.shared.clearCache()
@@ -127,6 +133,32 @@ public class InAppWebViewManager: ChannelDelegate {
         }
         let date = NSDate(timeIntervalSince1970: 0)
         WKWebsiteDataStore.default().removeData(ofTypes: websiteDataTypes, modifiedSince: date as Date, completionHandler: completionHandler)
+    }
+    
+    public func clearCacheByDomain(domain: String, includeDiskFiles: Bool, completionHandler: @escaping () -> Void) {
+        var websiteDataTypes = Set([WKWebsiteDataTypeMemoryCache])
+        if includeDiskFiles {
+            websiteDataTypes.insert(WKWebsiteDataTypeDiskCache)
+            if #available(macOS 10.13.4, *) {
+                websiteDataTypes.insert(WKWebsiteDataTypeFetchCache)
+            }
+            websiteDataTypes.insert(WKWebsiteDataTypeOfflineWebApplicationCache)
+        }
+        
+        WKWebsiteDataStore.default().fetchDataRecords(ofTypes: websiteDataTypes) { (dataRecords) in
+            let matchingRecords = dataRecords.filter { record in
+                return record.displayName == domain || record.displayName.hasSuffix("." + domain)
+            }
+            
+            if matchingRecords.isEmpty {
+                completionHandler()
+                return
+            }
+            
+            WKWebsiteDataStore.default().removeData(ofTypes: websiteDataTypes, for: matchingRecords) {
+                completionHandler()
+            }
+        }
     }
     
     public override func dispose() {

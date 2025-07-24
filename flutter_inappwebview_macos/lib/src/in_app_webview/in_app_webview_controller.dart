@@ -2722,6 +2722,15 @@ class MacOSInAppWebViewController extends PlatformInAppWebViewController
   }
 
   @override
+  Future<void> clearCacheByDomain(
+      {required String domain, bool includeDiskFiles = true}) async {
+    Map<String, dynamic> args = <String, dynamic>{};
+    args.putIfAbsent('domain', () => domain);
+    args.putIfAbsent('includeDiskFiles', () => includeDiskFiles);
+    await _staticChannel.invokeMethod('clearCacheByDomain', args);
+  }
+
+  @override
   Future<void> clearContentBlockerCache() async {
     Map<String, dynamic> args = <String, dynamic>{};
     await _staticChannel.invokeMethod('clearContentBlockerCache', args);

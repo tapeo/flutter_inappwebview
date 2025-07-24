@@ -586,6 +586,12 @@ class InAppWebViewController {
       PlatformInAppWebViewController.static()
           .clearAllCache(includeDiskFiles: includeDiskFiles);
 
+  ///{@macro flutter_inappwebview_platform_interface.PlatformInAppWebViewController.clearCacheByDomain}
+  static Future<void> clearCacheByDomain(
+          {required String domain, bool includeDiskFiles = true}) =>
+      PlatformInAppWebViewController.static().clearCacheByDomain(
+          domain: domain, includeDiskFiles: includeDiskFiles);
+
   ///{@macro flutter_inappwebview_platform_interface.PlatformInAppWebViewController.clearContentBlockerCache}
   static Future<void> clearContentBlockerCache() =>
       PlatformInAppWebViewController.static().clearContentBlockerCache();

@@ -2459,6 +2459,21 @@ abstract class PlatformInAppWebViewController extends PlatformInterface
         'clearAllCache is not implemented on the current platform');
   }
 
+  ///{@template flutter_inappwebview_platform_interface.PlatformInAppWebViewController.clearCacheByDomain}
+  ///Clears the resource cache for a specific domain. This will only clear cache data for the specified domain.
+  ///
+  ///[domain] the domain for which to clear cache (e.g., "example.com")
+  ///[includeDiskFiles] if `false`, only the RAM cache is cleared. The default value is `true`.
+  ///
+  ///**Officially Supported Platforms/Implementations**:
+  ///- MacOS
+  ///{@endtemplate}
+  Future<void> clearCacheByDomain(
+      {required String domain, bool includeDiskFiles = true}) {
+    throw UnimplementedError(
+        'clearCacheByDomain is not implemented on the current platform');
+  }
+
   ///{@template flutter_inappwebview_platform_interface.PlatformInAppWebViewController.clearContentBlockerCache}
   ///Clears the content blocker cache. This will remove all compiled content blocking rules from memory.
   ///
