@@ -1430,33 +1430,6 @@ public class InAppWebView: WKWebView, WKUIDelegate,
             channelDelegate?.onReceivedHttpError(request: request, errorResponse: errorResponse)
         }
         
-        let useOnNavigationResponse = settings?.useOnNavigationResponse
-  
-        if useOnNavigationResponse != nil, useOnNavigationResponse! {
-            var decisionHandlerCalled = false
-            let callback = WebViewChannelDelegate.NavigationResponseCallback()
-            callback.nonNullSuccess = { (response: WKNavigationResponsePolicy) in
-                decisionHandlerCalled = true
-                decisionHandler(response)
-                return false
-            }
-            callback.defaultBehaviour = { (response: WKNavigationResponsePolicy?) in
-                if !decisionHandlerCalled {
-                    decisionHandlerCalled = true
-                    decisionHandler(.allow)
-                }
-            }
-            callback.error = { [weak callback] (code: String, message: String?, details: Any?) in
-                callback?.defaultBehaviour(nil)
-            }
-            
-            if let channelDelegate = channelDelegate {
-                channelDelegate.onNavigationResponse(navigationResponse: navigationResponse, callback: callback)
-            } else {
-                callback.defaultBehaviour(nil)
-            }
-        }
-        
         // Handle automatic downloads based on MIME type
         if #available(macOS 11.3, *) {
             // Check if content can be shown, if not, trigger download
@@ -1474,7 +1447,37 @@ public class InAppWebView: WKWebView, WKUIDelegate,
             }
         }
         
-        decisionHandler(.allow)
+        var decisionHandlerCalled = false
+        let callback = WebViewChannelDelegate.NavigationResponseCallback()
+        callback.nonNullSuccess = { (response: WKNavigationResponsePolicy) in
+            decisionHandlerCalled = true
+            decisionHandler(response)
+            return false
+        }
+        callback.defaultBehaviour = { (response: WKNavigationResponsePolicy?) in
+            if !decisionHandlerCalled {
+                decisionHandlerCalled = true
+                decisionHandler(.allow)
+            }
+        }
+        callback.error = { [weak callback] (code: String, message: String?, details: Any?) in
+            print(code + ", " + (message ?? ""))
+            callback?.defaultBehaviour(nil)
+        }
+        
+        let runCallback = {
+            if let useOnNavigationResponse = self.settings?.useOnNavigationResponse, useOnNavigationResponse, let channelDelegate = self.channelDelegate {
+                channelDelegate.onNavigationResponse(navigationResponse: navigationResponse, callback: callback)
+            } else {
+                callback.defaultBehaviour(nil)
+            }
+        }
+        
+        if windowId != nil, !windowCreated {
+            windowBeforeCreatedCallbacks.append(runCallback)
+        } else {
+            runCallback()
+        }
     }
     
     public func webView(_ webView: WKWebView, didStartProvisionalNavigation navigation: WKNavigation!) {
