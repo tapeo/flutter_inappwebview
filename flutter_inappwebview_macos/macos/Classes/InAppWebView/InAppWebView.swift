@@ -8,6 +8,7 @@
 import FlutterMacOS
 import Foundation
 @preconcurrency import WebKit
+import UniformTypeIdentifiers
 
 public class InAppWebView: WKWebView, WKUIDelegate,
                             WKNavigationDelegate, WKScriptMessageHandler,
@@ -58,6 +59,7 @@ public class InAppWebView: WKWebView, WKUIDelegate,
     private var urlSession: URLSession?
     private var activeDownloadTasks: [URL: URLSessionDownloadTask] = [:]
     private var activeDownloadProgress: [URL: Double] = [:]
+    private var selectedDownloadDestinations: [URL: URL] = [:]
     
     public override var acceptsFirstResponder: Bool { return true }
     
@@ -1286,8 +1288,16 @@ public class InAppWebView: WKWebView, WKUIDelegate,
     @available(macOS 11.3, *)
     public func download(_ download: WKDownload, decideDestinationUsing response: URLResponse, suggestedFilename: String, completionHandler: @escaping (URL?) -> Void) {
         if let url = response.url, url.absoluteString.hasPrefix("blob:") {
-            filePathDestination = generateDownloadDestination(with: suggestedFilename)
-            completionHandler(filePathDestination)
+            // For blob downloads, show save panel to let user choose location
+            showSavePanelForDownload(suggestedFilename: suggestedFilename, mimeType: response.mimeType) { [weak self] selectedURL in
+                if let selectedURL = selectedURL {
+                    self?.filePathDestination = selectedURL
+                    completionHandler(selectedURL)
+                } else {
+                    // User cancelled, cancel the download
+                    completionHandler(nil)
+                }
+            }
             return
         }
 
@@ -1332,6 +1342,87 @@ public class InAppWebView: WKWebView, WKUIDelegate,
         }
         
         return uniqueFileURL
+    }
+    
+    // Add file picker support for downloads
+    private func showSavePanelForDownload(suggestedFilename: String, mimeType: String?, completion: @escaping (URL?) -> Void) {
+        DispatchQueue.main.async {
+            let savePanel = NSSavePanel()
+            savePanel.title = "Save File"
+            savePanel.prompt = "Save"
+            savePanel.nameFieldStringValue = suggestedFilename.isEmpty ? "download" : suggestedFilename
+            
+            // Set allowed file types based on MIME type
+            if let mimeType = mimeType {
+                let fileExtension = self.getFileExtensionForMimeType(mimeType)
+                if !fileExtension.isEmpty {
+                    savePanel.allowedContentTypes = [UTType(filenameExtension: fileExtension) ?? UTType.data]
+                }
+            }
+            
+            // Set initial directory to Downloads
+            if let downloadsDirectory = FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask).first {
+                savePanel.directoryURL = downloadsDirectory
+            }
+            
+            savePanel.begin { response in
+                if response == .OK {
+                    completion(savePanel.url)
+                } else {
+                    completion(nil)
+                }
+            }
+        }
+    }
+    
+    // Helper method to get file extension from MIME type
+    private func getFileExtensionForMimeType(_ mimeType: String) -> String {
+        switch mimeType.lowercased() {
+        case "image/png":
+            return "png"
+        case "image/jpeg", "image/jpg":
+            return "jpg"
+        case "image/gif":
+            return "gif"
+        case "image/webp":
+            return "webp"
+        case "image/svg+xml":
+            return "svg"
+        case "application/pdf":
+            return "pdf"
+        case "text/plain":
+            return "txt"
+        case "text/html":
+            return "html"
+        case "text/css":
+            return "css"
+        case "text/javascript", "application/javascript":
+            return "js"
+        case "application/json":
+            return "json"
+        case "application/xml", "text/xml":
+            return "xml"
+        case "application/zip":
+            return "zip"
+        case "application/x-rar-compressed":
+            return "rar"
+        case "application/x-7z-compressed":
+            return "7z"
+        case "video/mp4":
+            return "mp4"
+        case "video/webm":
+            return "webm"
+        case "video/quicktime":
+            return "mov"
+        case "audio/mpeg":
+            return "mp3"
+        case "audio/wav":
+            return "wav"
+        case "audio/ogg":
+            return "ogg"
+        default:
+            return ""
+        }
     }
     
     @available(macOS 11.3, *)
@@ -2820,33 +2911,48 @@ if(window.\(JavaScriptBridgeJS.get_JAVASCRIPT_BRIDGE_NAME())[\(_callHandlerID)] 
 
     // 3. Add a method to start a download with progress tracking
     public func startTrackedDownload(url: URL, suggestedFilename: String?) {
-        if urlSession == nil {
-            let config = URLSessionConfiguration.default
-            urlSession = URLSession(configuration: config, delegate: self, delegateQueue: nil)
-        }
-        
-        let task = urlSession!.downloadTask(with: url)
-        activeDownloadTasks[url] = task
-        activeDownloadProgress[url] = 0
-        
-        // Send start event
-        let request = DownloadStartRequest(
-            url: url.absoluteString,
-            userAgent: nil,
-            contentDisposition: nil,
-            mimeType: nil,
-            contentLength: 0,
-            suggestedFilename: suggestedFilename,
-            textEncodingName: nil
-        )
-        
-        DispatchQueue.main.async {
-            if let channelDelegate = self.channelDelegate {
-                channelDelegate.onDownloadStarting(request: request)
+        // Show save panel first to let user choose download location
+        showSavePanelForDownload(suggestedFilename: suggestedFilename ?? url.lastPathComponent, mimeType: nil) { [weak self] selectedURL in
+            guard let self = self else { return }
+            
+            if selectedURL == nil {
+                // User cancelled the download
+                return
             }
+            
+            // Store the selected destination for this URL
+            if let selectedURL = selectedURL {
+                self.selectedDownloadDestinations[url] = selectedURL
+            }
+            
+            if self.urlSession == nil {
+                let config = URLSessionConfiguration.default
+                self.urlSession = URLSession(configuration: config, delegate: self, delegateQueue: nil)
+            }
+            
+            let task = self.urlSession!.downloadTask(with: url)
+            self.activeDownloadTasks[url] = task
+            self.activeDownloadProgress[url] = 0
+            
+            // Send start event
+            let request = DownloadStartRequest(
+                url: url.absoluteString,
+                userAgent: nil,
+                contentDisposition: nil,
+                mimeType: nil,
+                contentLength: 0,
+                suggestedFilename: suggestedFilename,
+                textEncodingName: nil
+            )
+            
+            DispatchQueue.main.async {
+                if let channelDelegate = self.channelDelegate {
+                    channelDelegate.onDownloadStarting(request: request)
+                }
+            }
+            
+            task.resume()
         }
-        
-        task.resume()
     }
 }
 
@@ -2865,25 +2971,43 @@ extension InAppWebView: URLSessionDownloadDelegate {
     public func urlSession(_ session: URLSession, downloadTask: URLSessionDownloadTask, didFinishDownloadingTo location: URL) {
         guard let url = downloadTask.originalRequest?.url else { return }
         let suggestedFilename = downloadTask.response?.suggestedFilename ?? url.lastPathComponent
-        let downloadDirectory: URL
-        if let downloadPath = settings?.downloadPath, !downloadPath.isEmpty {
-            downloadDirectory = URL(fileURLWithPath: downloadPath)
+        
+        // Use the user-selected destination if available, otherwise fall back to default
+        let destinationURL: URL
+        if let selectedDestination = selectedDownloadDestinations[url] {
+            destinationURL = selectedDestination
+            selectedDownloadDestinations.removeValue(forKey: url)
         } else {
-            downloadDirectory = FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask).first ?? FileManager.default.temporaryDirectory
+            // Fallback to default download directory
+            let downloadDirectory: URL
+            if let downloadPath = settings?.downloadPath, !downloadPath.isEmpty {
+                downloadDirectory = URL(fileURLWithPath: downloadPath)
+            } else {
+                downloadDirectory = FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask).first ?? FileManager.default.temporaryDirectory
+            }
+            do {
+                try FileManager.default.createDirectory(at: downloadDirectory, withIntermediateDirectories: true, attributes: nil)
+            } catch {
+                print("Failed to create download directory: \(error.localizedDescription)")
+            }
+            destinationURL = downloadDirectory.appendingPathComponent(suggestedFilename)
         }
+        
         do {
-            try FileManager.default.createDirectory(at: downloadDirectory, withIntermediateDirectories: true, attributes: nil)
-        } catch {
-            print("Failed to create download directory: \(error.localizedDescription)")
-        }
-        let destinationURL = downloadDirectory.appendingPathComponent(suggestedFilename)
-        do {
+            // Ensure the destination directory exists
+            let destinationDirectory = destinationURL.deletingLastPathComponent()
+            try FileManager.default.createDirectory(at: destinationDirectory, withIntermediateDirectories: true, attributes: nil)
+            
+            // If file already exists, remove it first
             if FileManager.default.fileExists(atPath: destinationURL.path) {
                 try FileManager.default.removeItem(at: destinationURL)
             }
+            
+            // Move the downloaded file to the destination
             try FileManager.default.moveItem(at: location, to: destinationURL)
             let attributes = try FileManager.default.attributesOfItem(atPath: destinationURL.path)
             let totalBytes = (attributes[.size] as? NSNumber)?.int64Value
+            
             DispatchQueue.main.async {
                 self.channelDelegate?.onDownloadCompleted(
                     originalUrl: url.absoluteString,
@@ -2908,6 +3032,8 @@ extension InAppWebView: URLSessionDownloadDelegate {
                 )
             }
         }
+        
+        // Clean up tracking data
         activeDownloadTasks.removeValue(forKey: url)
         activeDownloadProgress.removeValue(forKey: url)
     }
