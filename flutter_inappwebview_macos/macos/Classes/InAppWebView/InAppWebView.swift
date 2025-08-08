@@ -2908,6 +2908,258 @@ if(window.\(JavaScriptBridgeJS.get_JAVASCRIPT_BRIDGE_NAME())[\(_callHandlerID)] 
     deinit {
         debugPrint("InAppWebView - dealloc")
     }
+    
+    // MARK: - Context Menu Handler for Image Downloads (macOS)
+    private var lastRightClickPoint: NSPoint = NSPoint.zero
+    
+    public override func rightMouseDown(with event: NSEvent) {
+        // Store the click location for later use
+        lastRightClickPoint = convert(event.locationInWindow, from: nil)
+        super.rightMouseDown(with: event)
+    }
+    
+    public override func willOpenMenu(_ menu: NSMenu, with event: NSEvent) {
+        super.willOpenMenu(menu, with: event)
+        
+        // Look for download menu items and replace their actions
+        var foundDownloadItems = 0
+        for item in menu.items {
+            let isDownloadImage = item.title.contains("Download") && item.title.contains("Image")
+            let isDownloadLinked = (item.title.contains("Download") && item.title.contains("Linked")) || item.title.contains("Download Linked File")
+            
+            if isDownloadImage || isDownloadLinked {
+                item.target = self
+                item.action = #selector(downloadFromContextMenu(_:))
+                foundDownloadItems += 1
+            }
+        }
+    }
+    
+    @objc private func downloadFromContextMenu(_ sender: NSMenuItem) {
+        // Use JavaScript to get the download URL from the last right-click location
+        let script = """
+            (function() {
+                var element = document.elementFromPoint(\(lastRightClickPoint.x), \(bounds.height - lastRightClickPoint.y));
+                
+                var result = { 
+                    url: null, 
+                    filename: null, 
+                    mimeType: null, 
+                    elementType: element ? element.tagName : 'null',
+                    debug: 'Initial result'
+                };
+                
+                // First priority: Check if it's an image directly
+                if (element && element.tagName === 'IMG') {
+                    result.url = element.src;
+                    result.debug = 'Found IMG element';
+                    
+                    // Extract filename from URL, removing query parameters
+                    var cleanUrl = element.src.split('?')[0];
+                    var urlParts = cleanUrl.split('/');
+                    var filename = urlParts[urlParts.length - 1] || element.alt || 'image';
+                    
+                    // Decode URL-encoded filename
+                    try {
+                        filename = decodeURIComponent(filename);
+                    } catch(e) {
+                        // If decoding fails, use original
+                    }
+                    
+                    result.filename = filename;
+                    
+                    // Determine mime type from file extension
+                    var lowerSrc = element.src.toLowerCase();
+                    if (lowerSrc.includes('.jpg') || lowerSrc.includes('.jpeg')) {
+                        result.mimeType = 'image/jpeg';
+                    } else if (lowerSrc.includes('.png')) {
+                        result.mimeType = 'image/png';
+                    } else if (lowerSrc.includes('.gif')) {
+                        result.mimeType = 'image/gif';
+                    } else if (lowerSrc.includes('.webp')) {
+                        result.mimeType = 'image/webp';
+                    } else if (lowerSrc.includes('.svg')) {
+                        result.mimeType = 'image/svg+xml';
+                    }
+                    
+                    return result;
+                }
+                
+                // Second priority: Check if we clicked on a link that contains an image
+                if (element && element.tagName === 'A') {
+                    var img = element.querySelector('img');
+                    if (img) {
+                        result.url = img.src;  // Use the image src, not the link href
+                        result.debug = 'Found IMG inside A element';
+                        
+                        // Extract filename from image URL
+                        var cleanUrl = img.src.split('?')[0];
+                        var urlParts = cleanUrl.split('/');
+                        var filename = urlParts[urlParts.length - 1] || img.alt || 'image';
+                        
+                        try {
+                            filename = decodeURIComponent(filename);
+                        } catch(e) {
+                            // If decoding fails, use original
+                        }
+                        
+                        result.filename = filename;
+                        
+                        // Determine mime type from image extension
+                        var lowerSrc = img.src.toLowerCase();
+                        if (lowerSrc.includes('.jpg') || lowerSrc.includes('.jpeg')) {
+                            result.mimeType = 'image/jpeg';
+                        } else if (lowerSrc.includes('.png')) {
+                            result.mimeType = 'image/png';
+                        } else if (lowerSrc.includes('.gif')) {
+                            result.mimeType = 'image/gif';
+                        } else if (lowerSrc.includes('.webp')) {
+                            result.mimeType = 'image/webp';
+                        } else if (lowerSrc.includes('.svg')) {
+                            result.mimeType = 'image/svg+xml';
+                        }
+                        
+                        return result;
+                    }
+                }
+                
+                // Third priority: Check for regular links (for "Download Linked File")
+                var linkElement = element;
+                var depth = 0;
+                while (linkElement && depth < 10) { // Prevent infinite loops
+                    if (linkElement.tagName === 'A' && linkElement.href) {
+                        result.url = linkElement.href;
+                        result.debug = 'Found A element';
+                        
+                        // Extract filename from URL, removing query parameters
+                        var cleanUrl = linkElement.href.split('?')[0];
+                        var urlParts = cleanUrl.split('/');
+                        var urlFilename = urlParts[urlParts.length - 1];
+                        
+                        // Try to decode URL-encoded filename
+                        try {
+                            urlFilename = decodeURIComponent(urlFilename);
+                        } catch(e) {
+                            // If decoding fails, use original
+                        }
+                        
+                        result.filename = urlFilename || linkElement.textContent.trim() || 'download';
+                        
+                        // Check if the link contains an image
+                        var img = linkElement.querySelector('img');
+                        if (img) {
+                            result.debug += ' (contains image)';
+                            // This is a linked image, but we still want to download the link target
+                        }
+                        
+                        return result;
+                    }
+                    linkElement = linkElement.parentElement;
+                    depth++;
+                }
+                
+                // Check if we're inside a link that contains an image
+                var parent = element;
+                depth = 0;
+                while (parent && depth < 10) {
+                    if (parent.tagName === 'IMG') {
+                        result.url = parent.src;
+                        result.debug = 'Found parent IMG element';
+                        
+                        var cleanUrl = parent.src.split('?')[0];
+                        var urlParts = cleanUrl.split('/');
+                        var filename = urlParts[urlParts.length - 1] || parent.alt || 'image';
+                        
+                        try {
+                            filename = decodeURIComponent(filename);
+                        } catch(e) {
+                            // If decoding fails, use original
+                        }
+                        
+                        result.filename = filename;
+                        return result;
+                    }
+                    parent = parent.parentElement;
+                    depth++;
+                }
+                
+                result.debug = 'No downloadable element found';
+                return result;
+            })();
+        """
+        
+        evaluateJavaScript(script) { [weak self] result, error in
+            if let error = error {
+                print("JavaScript error: \(error.localizedDescription)")
+                return
+            }
+            
+            guard let resultDict = result as? [String: Any] else {
+                print("Invalid result from JavaScript: \(String(describing: result))")
+                return
+            }
+            
+            guard let urlString = resultDict["url"] as? String,
+                  !urlString.isEmpty,
+                  let downloadURL = URL(string: urlString) else {
+                print("No valid URL found in result")
+                return
+            }
+            
+            var suggestedFilename = resultDict["filename"] as? String ?? downloadURL.lastPathComponent
+            let mimeType = resultDict["mimeType"] as? String
+            
+            // Ensure filename has proper extension based on URL or MIME type
+            suggestedFilename = self?.ensureProperFileExtension(filename: suggestedFilename, url: downloadURL, mimeType: mimeType) ?? suggestedFilename
+            
+            DispatchQueue.main.async {
+                self?.startTrackedDownload(url: downloadURL, suggestedFilename: suggestedFilename)
+            }
+        }
+    }
+    
+    private func ensureProperFileExtension(filename: String, url: URL, mimeType: String?) -> String {
+        let urlExtension = url.pathExtension.lowercased()
+        let filenameExtension = (filename as NSString).pathExtension.lowercased()
+        
+        // If filename already has the correct extension from URL, use it
+        if !filenameExtension.isEmpty && !urlExtension.isEmpty && filenameExtension == urlExtension {
+            return filename
+        }
+        
+        // If URL has an extension but filename doesn't, add it
+        if !urlExtension.isEmpty && filenameExtension.isEmpty {
+            let result = filename + "." + urlExtension
+            return result
+        }
+        
+        // If filename has no extension, try to determine from MIME type
+        if filenameExtension.isEmpty {
+            if let mimeType = mimeType {
+                let fileExtension = getFileExtensionForMimeType(mimeType)
+                if !fileExtension.isEmpty {
+                    let result = filename + "." + fileExtension
+                    return result
+                }
+            }
+            
+            // Fallback: try to extract extension from URL query parameters or path
+            let urlString = url.absoluteString.lowercased()
+            if urlString.contains(".jpg") || urlString.contains(".jpeg") {
+                return filename + ".jpg"
+            } else if urlString.contains(".png") {
+                return filename + ".png"
+            } else if urlString.contains(".gif") {
+                return filename + ".gif"
+            } else if urlString.contains(".webp") {
+                return filename + ".webp"
+            } else if urlString.contains(".svg") {
+                return filename + ".svg"
+            }
+        }
+        
+        return filename
+    }
 
     // 3. Add a method to start a download with progress tracking
     public func startTrackedDownload(url: URL, suggestedFilename: String?) {
