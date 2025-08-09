@@ -97,7 +97,8 @@ public class FlutterWebViewController: NSView, Disposable {
         let initialFile = params["initialFile"] as? String
         let initialData = params["initialData"] as? [String: String?]
         
-        if windowId == nil {
+        // Load initial content if no windowId or if windowId was provided but window doesn't exist
+        if windowId == nil || (windowId != nil && webView.windowId == nil) {
             if #available(macOS 10.13, *) {
                 webView.configuration.userContentController.removeAllContentRuleLists()
                 if let contentBlockers = webView.settings?.contentBlockers, contentBlockers.count > 0 {
