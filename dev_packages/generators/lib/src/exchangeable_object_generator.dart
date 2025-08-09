@@ -648,13 +648,7 @@ class ExchangeableObjectGenerator
       final genericTypeReplaced = genericType?.toString().replaceAll("_", "");
       if (genericType != null && !Util.isDartCoreType(genericType)) {
         final genericTypeFieldName = 'e';
-        return (isNullable ? '$value != null ? ' : '') +
-            "${elementType.isDartCoreSet ? 'Set' : 'List'}<$genericTypeReplaced>.from(" +
-            value +
-            '.map(($genericTypeFieldName) => ' +
-            getFromMapValue(genericTypeFieldName, genericType) +
-            '))' +
-            (isNullable ? ' : null' : '');
+        return '${isNullable ? '$value != null ? ' : ''}${elementType.isDartCoreSet ? 'Set' : 'List'}<$genericTypeReplaced>.from($value.map(($genericTypeFieldName) => ${getFromMapValue(genericTypeFieldName, genericType)}))${isNullable ? ' : null' : ''}';
       } else {
         if (genericType != null) {
           return "${isNullable ? '$value != null ? ' : ''}${elementType.isDartCoreSet ? 'Set' : 'List'}<$genericTypeReplaced>.from($value!.cast<$genericTypeReplaced>())${isNullable ? ' : null' : ''}";
@@ -691,11 +685,11 @@ class ExchangeableObjectGenerator
           }
           var wrapper = "switch (enumMethod ?? $defaultEnumMethodValue) {";
           wrapper +=
-              "EnumMethod.nativeValue => ${hasFromNativeValue ? '${classNameReference!}.fromNativeValue($value)' : "null"}, ";
+              'EnumMethod.nativeValue => ${hasFromNativeValue ? '${classNameReference!}.fromNativeValue($value)' : "null"}, ';
           wrapper +=
-              "EnumMethod.value => ${hasFromValue ? '${classNameReference!}.fromValue($value)' : "null"}, ";
+              'EnumMethod.value => ${hasFromValue ? '${classNameReference!}.fromValue($value)' : "null"}, ';
           wrapper +=
-              "EnumMethod.name => ${hasByName ? '${classNameReference!}.byName($value)' : "null"}";
+              'EnumMethod.name => ${hasByName ? '${classNameReference!}.byName($value)' : "null"}';
           wrapper += "}";
           value = wrapper;
         } else {
@@ -766,11 +760,11 @@ class ExchangeableObjectGenerator
           }
           var wrapper = "switch (enumMethod ?? $defaultEnumMethodValue) {";
           wrapper +=
-              "EnumMethod.nativeValue => ${hasToNativeValue ? ('$fieldName${isNullable ? '?' : ''}.toNativeValue()') : "null"}, ";
+              'EnumMethod.nativeValue => ${hasToNativeValue ? ('$fieldName${isNullable ? '?' : ''}.toNativeValue()') : "null"}, ';
           wrapper +=
-              "EnumMethod.value => ${hasToValue ? ('$fieldName${isNullable ? '?' : ''}.toValue()') : "null"}, ";
+              'EnumMethod.value => ${hasToValue ? ('$fieldName${isNullable ? '?' : ''}.toValue()') : "null"}, ';
           wrapper +=
-              "EnumMethod.name => ${hasName ? ('$fieldName${isNullable ? '?' : ''}.name()') : "null"}";
+              'EnumMethod.name => ${hasName ? ('$fieldName${isNullable ? '?' : ''}.name()') : "null"}';
           wrapper += "}";
           return wrapper;
         } else {
