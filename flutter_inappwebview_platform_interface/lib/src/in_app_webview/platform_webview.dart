@@ -1266,7 +1266,10 @@ class PlatformWebViewCreationParams<T> {
   ///
   ///**Officially Supported Platforms/Implementations**:
   ///- MacOS
-  final void Function(T controller, DownloadProgressEvent downloadProgressEvent)? onDownloadProgress;
+  ///{@endtemplate}
+  final void Function(
+          T controller, DownloadProgressEvent downloadProgressEvent)?
+      onDownloadProgress;
 
   ///{@macro flutter_inappwebview_platform_interface.PlatformWebViewCreationParams}
   const PlatformWebViewCreationParams(

@@ -12,6 +12,7 @@ topics:
   - webview-flutter
   - inappwebview
   - browser
+publish_to: none
 
 environment:
   sdk: ^3.5.0

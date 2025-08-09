@@ -1,8 +1,8 @@
 import 'package:flutter_inappwebview_internal_annotations/flutter_inappwebview_internal_annotations.dart';
 
-import 'context_menu.dart';
-import '../util.dart';
 import '../types/enum_method.dart';
+import '../util.dart';
+import 'context_menu.dart';
 
 part 'context_menu_item.g.dart';
 
@@ -48,7 +48,7 @@ class ContextMenuItem_ {
 
   @ExchangeableObjectMethod(toMapMergeWith: true)
   // ignore: unused_element
-  Map<String, dynamic> _toMapMergeWith({EnumMethod? enumMethod}) {
+  Map<String, dynamic> _toMapMergeWith() {
     return {"androidId": androidId, "iosId": iosId};
   }
 }
