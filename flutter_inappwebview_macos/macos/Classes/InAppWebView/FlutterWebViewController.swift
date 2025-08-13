@@ -58,9 +58,9 @@ public class FlutterWebViewController: NSView, Disposable {
         webView!.findInteractionController = findInteractionController
         findInteractionController.prepare()
         
-        webView!.autoresizingMask = [.width, .height]
-        self.autoresizesSubviews = true
-        self.autoresizingMask = [.width, .height]
+        webView!.autoresizingMask = []
+        self.autoresizesSubviews = false
+        self.autoresizingMask = []
         self.addSubview(webView!)
 
         webView!.settings = settings
@@ -70,6 +70,18 @@ public class FlutterWebViewController: NSView, Disposable {
     
     required init?(coder nsCoder: NSCoder) {
         super.init(coder: nsCoder)
+    }
+    
+    public override func setFrameSize(_ newSize: NSSize) {
+        super.setFrameSize(newSize)
+        // Manually set webview frame to match our bounds
+        webView()?.frame = self.bounds
+    }
+    
+    public override func layout() {
+        super.layout()
+        // Ensure webview frame matches our bounds during layout
+        webView()?.frame = self.bounds
     }
     
     public func webView() -> InAppWebView? {
