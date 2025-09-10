@@ -21,10 +21,14 @@ public enum HitTestResultType: Int {
 public class HitTestResult: NSObject {
     var type: HitTestResultType
     var extra: String?
+    var x: Double?
+    var y: Double?
     
-    public init(type: HitTestResultType, extra: String?) {
+    public init(type: HitTestResultType, extra: String?, x: Double? = nil, y: Double? = nil) {
         self.type = type
         self.extra = extra
+        self.x = x
+        self.y = y
     }
     
     public static func fromMap(map: [String:Any?]?) -> HitTestResult? {
@@ -32,13 +36,17 @@ public class HitTestResult: NSObject {
             return nil
         }
         let type = HitTestResultType.init(rawValue: map["type"] as? Int ?? HitTestResultType.unknownType.rawValue) ?? HitTestResultType.unknownType
-        return HitTestResult(type: type, extra: map["extra"] as? String)
+        let x = map["x"] as? Double
+        let y = map["y"] as? Double
+        return HitTestResult(type: type, extra: map["extra"] as? String, x: x, y: y)
     }
     
     public func toMap () -> [String:Any?] {
         return [
             "type": type.rawValue,
             "extra": extra,
+            "x": x,
+            "y": y,
         ]
     }
 }

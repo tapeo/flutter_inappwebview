@@ -738,6 +738,11 @@ public class WebViewChannelDelegate: ChannelDelegate {
         channel?.invokeMethod("onCreateContextMenu", arguments: hitTestResult.toMap())
     }
     
+    public func onRightClick(x: Double, y: Double) {
+        let arguments: [String: Any?] = ["x": x, "y": y]
+        channel?.invokeMethod("onRightClick", arguments: arguments)
+    }
+    
     public func onOverScrolled(x: Int, y: Int, clampedX: Bool, clampedY: Bool) {
         let arguments: [String: Any?] = ["x": x, "y": y, "clampedX": clampedX, "clampedY": clampedY]
         channel?.invokeMethod("onOverScrolled", arguments: arguments)

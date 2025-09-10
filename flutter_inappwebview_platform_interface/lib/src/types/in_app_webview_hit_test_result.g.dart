@@ -13,7 +13,14 @@ class InAppWebViewHitTestResult {
 
   ///The type of the hit test result.
   InAppWebViewHitTestResultType? type;
-  InAppWebViewHitTestResult({this.extra, this.type});
+
+  ///The x coordinate of the hit test result.
+  double? x;
+
+  ///The y coordinate of the hit test result.
+  double? y;
+  
+  InAppWebViewHitTestResult({this.extra, this.type, this.x, this.y});
 
   ///Gets a possible [InAppWebViewHitTestResult] instance from a [Map] value.
   static InAppWebViewHitTestResult? fromMap(Map<String, dynamic>? map,
@@ -30,6 +37,8 @@ class InAppWebViewHitTestResult {
           InAppWebViewHitTestResultType.fromValue(map['type']),
         EnumMethod.name => InAppWebViewHitTestResultType.byName(map['type'])
       },
+      x: map['x']?.toDouble(),
+      y: map['y']?.toDouble(),
     );
     return instance;
   }
@@ -43,6 +52,8 @@ class InAppWebViewHitTestResult {
         EnumMethod.value => type?.toValue(),
         EnumMethod.name => type?.name()
       },
+      "x": x,
+      "y": y,
     };
   }
 
@@ -53,6 +64,6 @@ class InAppWebViewHitTestResult {
 
   @override
   String toString() {
-    return 'InAppWebViewHitTestResult{extra: $extra, type: $type}';
+    return 'InAppWebViewHitTestResult{extra: $extra, type: $type, x: $x, y: $y}';
   }
 }

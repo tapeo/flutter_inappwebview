@@ -14,5 +14,11 @@ class InAppWebViewHitTestResult_ {
   ///Additional type-dependant information about the result.
   String? extra;
 
-  InAppWebViewHitTestResult_({this.type, this.extra});
+  ///The x coordinate of the hit test result.
+  double? x;
+
+  ///The y coordinate of the hit test result.
+  double? y;
+
+  InAppWebViewHitTestResult_({this.type, this.extra, this.x, this.y});
 }

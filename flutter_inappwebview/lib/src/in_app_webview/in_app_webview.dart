@@ -76,6 +76,8 @@ class InAppWebView extends StatefulWidget {
           onPageCommitVisible,
       void Function(InAppWebViewController controller, String? title)?
           onTitleChanged,
+      void Function(InAppWebViewController controller, double x, double y)?
+          onRightClick,
       @Deprecated('Use onDidReceiveServerRedirectForProvisionalNavigation instead')
       void Function(InAppWebViewController controller)?
           iosOnDidReceiveServerRedirectForProvisionalNavigation,
@@ -346,6 +348,10 @@ class InAppWebView extends StatefulWidget {
               onTitleChanged: onTitleChanged != null
                   ? (controller, title) =>
                       onTitleChanged.call(controller, title)
+                  : null,
+              onRightClick: onRightClick != null
+                  ? (controller, x, y) =>
+                      onRightClick.call(controller, x, y)
                   : null,
               onWindowFocus: onWindowFocus != null
                   ? (controller) => onWindowFocus.call(controller)

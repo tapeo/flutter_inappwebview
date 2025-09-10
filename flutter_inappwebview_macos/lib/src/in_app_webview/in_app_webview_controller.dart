@@ -1219,6 +1219,15 @@ class MacOSInAppWebViewController extends PlatformInAppWebViewController
           contextMenu.onCreateContextMenu!(hitTestResult);
         }
         break;
+      case "onRightClick":
+        if (webviewParams != null && webviewParams!.onRightClick != null) {
+          Map<String, dynamic> arguments =
+              call.arguments.cast<String, dynamic>();
+          double x = arguments['x']?.toDouble() ?? 0.0;
+          double y = arguments['y']?.toDouble() ?? 0.0;
+          webviewParams!.onRightClick!(_controllerFromPlatform, x, y);
+        }
+        break;
       case "onHideContextMenu":
         ContextMenu? contextMenu;
         if (webviewParams != null && webviewParams!.contextMenu != null) {

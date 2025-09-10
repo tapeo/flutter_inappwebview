@@ -652,6 +652,17 @@ class PlatformWebViewCreationParams<T> {
   ///{@endtemplate}
   final void Function(T controller, String? title)? onTitleChanged;
 
+  ///{@template flutter_inappwebview_platform_interface.PlatformWebViewCreationParams.onRightClick}
+  ///Event fired when a right-click occurs in the WebView.
+  ///
+  ///[x] represents the x coordinate of the right-click.
+  ///[y] represents the y coordinate of the right-click.
+  ///
+  ///**Officially Supported Platforms/Implementations**:
+  ///- MacOS
+  ///{@endtemplate}
+  final void Function(T controller, double x, double y)? onRightClick;
+
   ///{@template flutter_inappwebview_platform_interface.PlatformWebViewCreationParams.onOverScrolled}
   ///Event fired to respond to the results of an over-scroll operation.
   ///
@@ -1316,6 +1327,7 @@ class PlatformWebViewCreationParams<T> {
       this.onExitFullscreen,
       this.onPageCommitVisible,
       this.onTitleChanged,
+      this.onRightClick,
       this.onWindowFocus,
       this.onWindowBlur,
       this.onOverScrolled,
