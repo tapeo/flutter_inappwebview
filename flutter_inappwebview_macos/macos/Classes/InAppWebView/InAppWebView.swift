@@ -230,47 +230,6 @@ public class InAppWebView: WKWebView, WKUIDelegate,
                 configuration.preferences.shouldPrintBackgrounds = settings.shouldPrintBackgrounds
             }
         }
-        
-//        // Now handle extension sync
-//        if let extensionController = extensionManager.extensionController,
-//           let extensionContext = extensionManager.extensionContext,
-//           extensionManager.isReady {
-//
-//            print("🔄 Starting per-view extension sync...")
-//            let syncStart = Date()
-//
-//            DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {  // Increased from 0.1s
-//                do {
-//                    try extensionController.unload(extensionContext)
-//                    print("🔄 Unloaded extension context at \(Date().timeIntervalSince(syncStart))s")
-//
-//                    // Longer delay for clean state (increased from 0.05s)
-//                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-//                        do {
-//                            try extensionController.load(extensionContext)
-//                            print("🔄 Reloaded extension context at \(Date().timeIntervalSince(syncStart))s")
-//
-//                            // Now poll for readiness (key fix!)
-//                            Task {
-//                                let isReady = await self.extensionManager.checkDNRRulesReady(in: self, timeoutSeconds: 20)
-//                                if isReady {
-//                                    print("✅ Full readiness confirmed at \(Date().timeIntervalSince(syncStart))s")
-//                                    self.extensionManager.openExtensionPopup(for: self.extensionManager.extensionContext!.uniqueIdentifier)
-//                                } else {
-//                                    print("⚠️ DNR not ready after timeout - falling back to allow, but retry on refresh")
-//                                }
-//                            }
-//                        } catch {
-//                            print("❌ Reload failed: \(error)")
-//                        }
-//                    }
-//                } catch {
-//                    print("❌ Unload failed: \(error)")
-//                }
-//            }
-//        } else {
-//            print("⚠️ No extension manager - skipping sync")
-//        }
     }
     
     public func prepareAndAddUserScripts() -> Void {

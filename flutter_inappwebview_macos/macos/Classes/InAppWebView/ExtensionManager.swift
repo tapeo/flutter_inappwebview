@@ -11,20 +11,184 @@ import Foundation
 import UniformTypeIdentifiers
 
 // Weak wrapper to track WebViews without creating strong references
-private class WeakWebViewWrapper {
+private class WeakWebViewWrapper: NSObject {
     weak var webView: WKWebView?
     let id: String
-    
+    var currentURL: URL? // Track current URL for better tab matching
+
     init(webView: WKWebView, id: String) {
         self.webView = webView
         self.id = id
+        super.init()
+        // Observe URL changes for dynamic tracking
+        webView.addObserver(self, forKeyPath: "URL", options: [.new], context: nil)
+    }
+
+    override func observeValue(forKeyPath keyPath: String?, of object: Any?, change: [NSKeyValueChangeKey : Any]?, context: UnsafeMutableRawPointer?) {
+        if keyPath == "URL", let url = change?[.newKey] as? URL {
+            currentURL = url
+            print("🔄 URL updated for WebView \(id): \(url.absoluteString)") // Optional: Log for debugging
+        }
+    }
+
+    deinit {
+        if let webView = webView {
+            webView.removeObserver(self, forKeyPath: "URL")
+        }
     }
 }
 
-// 1. extension manager should be an instance, each webview need to have its own extension manager
-// 2. the only static method is the performInstallation, that create a static context to be used by the extension manager
+// MARK: - WKWebExtensionTab Implementation
+@available(macOS 15.4, *)
+private class ExtensionTab: NSObject, WKWebExtensionTab {
+    private weak var webView: WKWebView?
+    private let tabId: String
 
-public class ExtensionManager: NSObject, ObservableObject, WKWebExtensionControllerDelegate {
+    init(webView: WKWebView, id: String) {
+        self.webView = webView
+        self.tabId = id
+        super.init()
+    }
+
+    // MARK: - Required WKWebExtensionTab Methods
+
+    func url(for context: WKWebExtensionContext) -> URL? {
+        return webView?.url
+    }
+
+    func title(for context: WKWebExtensionContext) -> String? {
+        return webView?.title
+    }
+
+    func webView(for context: WKWebExtensionContext) -> WKWebView? {
+        return webView
+    }
+
+    func isSelected(for context: WKWebExtensionContext) -> Bool {
+        // For simplicity, consider the tab selected if it has a WebView
+        return webView != nil
+    }
+
+    func isLoadingComplete(for context: WKWebExtensionContext) -> Bool {
+        return webView?.isLoading == false
+    }
+
+    func indexInWindow(for context: WKWebExtensionContext) -> Int {
+        return 0 // Single tab for now
+    }
+
+    func window(for context: WKWebExtensionContext) -> WKWebExtensionWindow? {
+        return nil // Not implementing windows for now
+    }
+
+    func size(for context: WKWebExtensionContext) -> CGSize {
+        return webView?.frame.size ?? CGSize.zero
+    }
+    func isPinned(for context: WKWebExtensionContext) -> Bool {
+        return false
+    }
+
+    func isMuted(for context: WKWebExtensionContext) -> Bool {
+        return false
+    }
+
+    func isPlayingAudio(for context: WKWebExtensionContext) -> Bool {
+        return false
+    }
+
+    func isReaderModeAvailable(for context: WKWebExtensionContext) -> Bool {
+        return false
+    }
+
+    func isReaderModeActive(for context: WKWebExtensionContext) -> Bool {
+        return false
+    }
+
+    func pendingURL(for context: WKWebExtensionContext) -> URL? {
+        return nil
+    }
+
+    func parentTab(for context: WKWebExtensionContext) -> WKWebExtensionTab? {
+        return nil
+    }
+
+    func shouldBypassPermissions(for context: WKWebExtensionContext) -> Bool {
+        return true // Allow bypass for testing
+    }
+
+    func shouldGrantPermissionsOnUserGesture(for context: WKWebExtensionContext) -> Bool {
+        return true
+    }
+
+    // MARK: - Action Methods (with basic implementations)
+
+    func activate(for context: WKWebExtensionContext, completionHandler: @escaping (Error?) -> Void) {
+        completionHandler(nil)
+    }
+
+    func close(for context: WKWebExtensionContext, completionHandler: @escaping (Error?) -> Void) {
+        completionHandler(nil)
+    }
+
+    func loadURL(_ url: URL, for context: WKWebExtensionContext, completionHandler: @escaping (Error?) -> Void) {
+        webView?.load(URLRequest(url: url))
+        completionHandler(nil)
+    }
+
+    func reload(fromOrigin: Bool, for context: WKWebExtensionContext, completionHandler: @escaping (Error?) -> Void) {
+        if fromOrigin {
+            webView?.reloadFromOrigin()
+        } else {
+            webView?.reload()
+        }
+        completionHandler(nil)
+    }
+
+    func goBack(for context: WKWebExtensionContext, completionHandler: @escaping (Error?) -> Void) {
+        webView?.goBack()
+        completionHandler(nil)
+    }
+
+    func goForward(for context: WKWebExtensionContext, completionHandler: @escaping (Error?) -> Void) {
+        webView?.goForward()
+        completionHandler(nil)
+    }
+
+    func setSelected(_ selected: Bool, for context: WKWebExtensionContext, completionHandler: @escaping (Error?) -> Void) {
+        completionHandler(nil)
+    }
+
+    func setPinned(_ pinned: Bool, for context: WKWebExtensionContext, completionHandler: @escaping (Error?) -> Void) {
+        completionHandler(nil)
+    }
+
+    func setMuted(_ muted: Bool, for context: WKWebExtensionContext, completionHandler: @escaping (Error?) -> Void) {
+        completionHandler(nil)
+    }
+
+    func setZoomFactor(_ factor: Double, for context: WKWebExtensionContext, completionHandler: @escaping (Error?) -> Void) {
+        webView?.pageZoom = factor
+        completionHandler(nil)
+    }
+
+    func setReaderModeActive(_ active: Bool, for context: WKWebExtensionContext, completionHandler: @escaping (Error?) -> Void) {
+        completionHandler(nil)
+    }
+
+    func setParentTab(_ parent: WKWebExtensionTab?, for context: WKWebExtensionContext, completionHandler: @escaping (Error?) -> Void) {
+        completionHandler(nil)
+    }
+
+    func duplicate(using configuration: WKWebExtension.TabConfiguration, for context: WKWebExtensionContext, completionHandler: @escaping (WKWebExtensionTab?, Error?) -> Void) {
+        completionHandler(nil, NSError(domain: "ExtensionTab", code: 1, userInfo: [NSLocalizedDescriptionKey: "Duplication not supported"]))
+    }
+
+    func detectWebpageLocale(for context: WKWebExtensionContext, completionHandler: @escaping (Locale?, Error?) -> Void) {
+        completionHandler(Locale.current, nil)
+    }
+}
+
+public class ExtensionManager: NSObject, ObservableObject, WKWebExtensionControllerDelegate, NSPopoverDelegate {
     
     public var extensionContext: WKWebExtensionContext?
     public var extensionController: WKWebExtensionController?
@@ -34,8 +198,12 @@ public class ExtensionManager: NSObject, ObservableObject, WKWebExtensionControl
     private static var sharedExtensionContexts: [WKWebExtensionContext] = []
     private static var isPrepared = false
     
-    // Track active WebViews for tab support
+    // Track active WebViews for tab support - now with URL tracking
     private static var activeWebViews: [WeakWebViewWrapper] = []
+
+    // Track extension tabs
+    @available(macOS 15.4, *)
+    private static var extensionTabs: [String: ExtensionTab] = [:]
     
     private static let commonPermissions: [WKWebExtension.Permission] = [
         .storage,
@@ -58,12 +226,18 @@ public class ExtensionManager: NSObject, ObservableObject, WKWebExtensionControl
     
     // Action anchor views for popup positioning (similar to Nook)
     private var actionAnchors: [String: NSView] = [:]
-    
+
+    // Track whether delegate was called for each extension
+    private var delegateCallTracker: [String: Bool] = [:]
+
     public func openExtensionPopup(for extensionId: String) -> Bool {
         guard let controller = extensionController else {
             print("❌ Extension controller not available")
             return false
         }
+
+        // Ensure any existing popover is closed before attempting to open a new one
+        ExtensionPopupWindowManager.shared.closeExistingPopoverForExtension(extensionId)
 
         // Find the specific extension context by ID
         guard let targetContext = Self.sharedExtensionContexts.first(where: { $0.uniqueIdentifier == extensionId }) else {
@@ -74,51 +248,223 @@ public class ExtensionManager: NSObject, ObservableObject, WKWebExtensionControl
         print("🎯 Opening extension popup for: \(extensionId)")
         print("   Extension name: \(targetContext.webExtension.displayName ?? "Unknown")")
 
-        Task { @MainActor in
-            do {
-                // Get the first available tab from the extension controller
-                guard let firstTab = controller.extensionContexts.first?.openTabs.first else {
-                    print("❌ No tabs available in extension context")
-                    try await targetContext.performAction(for: nil)
-                    print("✅ Extension action performed without tab context")
-                    return
-                }
+        // Reset delegate call tracker for this extension
+        delegateCallTracker[extensionId] = false
+        print("   🔄 Reset delegate tracker for extension: \(extensionId)")
 
-                try await targetContext.performAction(for: firstTab as! WKWebExtensionTab)
-                print("✅ Extension action performed successfully with tab context")
-            } catch {
-                print("❌ Failed to perform extension action: \(error)")
-                // If performAction fails, it might mean no popup is defined
-                print("   This extension may not have a popup defined")
+        // IMPROVED: Use a more reliable approach to trigger the popup
+        Task { @MainActor in
+            // Find the most appropriate tab for this context
+            var suitableTab: WKWebExtensionTab? = nil
+            if #available(macOS 15.4, *) {
+                suitableTab = findSuitableTab(for: targetContext, controller: controller)
+            }
+
+            // Perform the action immediately without artificial delays
+            if let tab = suitableTab {
+                targetContext.performAction(for: tab)
+                print("✅ Extension action performed with matched tab")
+            } else {
+                print("ℹ️ No suitable tabs available for context, performing action without tab context")
+                targetContext.performAction(for: nil)
+                print("✅ Extension action performed without tab context")
+            }
+
+            // BACKUP APPROACH: If delegate isn't called within 150ms, create popup directly
+            try? await Task.sleep(nanoseconds: 150_000_000) // 150ms timeout (increased from 100ms)
+
+            if delegateCallTracker[extensionId] == false {
+                print("⚠️ Delegate not called within timeout - creating popup directly")
+                await createPopupDirectly(for: targetContext, extensionId: extensionId, tab: suitableTab)
+            } else {
+                print("✅ Delegate was called successfully - popup should be displayed")
             }
         }
 
         return true
     }
-    
-    /// Set action anchor view for better popup positioning (following Nook pattern)
-    public func setActionAnchor(for extensionId: String, anchorView: NSView) {
-        actionAnchors[extensionId] = anchorView
-        print("📍 Set action anchor for extension: \(extensionId)")
+
+    /// Create popup directly when WebKit delegate is not called
+    @MainActor
+    private func createPopupDirectly(for context: WKWebExtensionContext, extensionId: String, tab: WKWebExtensionTab?) async {
+        print("🛠️ Creating popup directly for extension: \(extensionId)")
+
+        // Get the extension's action and check for existing popup WebView
+        guard let action = context.action(for: tab) else {
+            print("   ❌ Could not get extension action for direct creation")
+            return
+        }
+
+        let webView: WKWebView
+        let popupURL: URL
+
+        // Prefer using the action's existing popupWebView if available
+        if let existingPopupWebView = action.popupWebView,
+           let existingURL = existingPopupWebView.url {
+            webView = existingPopupWebView
+            popupURL = existingURL
+            print("   📱 Using existing action popup WebView with URL: \(popupURL.absoluteString)")
+        } else if let fallbackURL = getPopupURL(for: context) {
+            // Fallback: create a new WebView
+            webView = WKWebView()
+            webView.configuration.webExtensionController = self.extensionController
+            webView.isInspectable = true
+            popupURL = fallbackURL
+            print("   📱 Creating new popup WebView with URL: \(popupURL.absoluteString)")
+
+            // Load the popup URL for new WebView
+            webView.load(URLRequest(url: popupURL))
+        } else {
+            print("   ❌ Could not determine popup URL for direct creation")
+            return
+        }
+
+        // Create and show the popover
+        await showPopoverWithWebView(webView, for: extensionId)
     }
-    
-    /// Remove action anchor for extension
-    public func removeActionAnchor(for extensionId: String) {
-        actionAnchors.removeValue(forKey: extensionId)
-        print("📍 Removed action anchor for extension: \(extensionId)")
+
+    /// Get popup URL for an extension context
+    private func getPopupURL(for context: WKWebExtensionContext) -> URL? {
+        // Try to get popup URL from the extension's action
+        if let action = context.action(for: nil),
+           let popupWebView = action.popupWebView,
+           let url = popupWebView.url {
+            return url
+        }
+
+        // Fallback: construct popup URL from base URL
+        let baseURL = context.baseURL
+        let popupURL = baseURL.appendingPathComponent("popup.html")
+        print("   🔧 Constructed popup URL: \(popupURL.absoluteString)")
+        return popupURL
     }
-    
-    /// Register a WebView as an active tab for extension support
+
+    /// Show popover with given WebView
+    @MainActor
+    private func showPopoverWithWebView(_ webView: WKWebView, for extensionId: String) async {
+        print("   🎯 Showing popover for extension: \(extensionId)")
+
+        // Create popover with transient behavior
+        let popover = NSPopover()
+        popover.contentSize = NSSize(width: 400, height: 600)
+        popover.behavior = .transient
+        popover.animates = true
+        popover.delegate = self
+
+        // Create view controller
+        let viewController = NSViewController()
+        webView.removeFromSuperview()
+        viewController.view = webView
+        popover.contentViewController = viewController
+
+        // Find anchor view
+        var anchorView: NSView?
+        var anchorRect: NSRect
+
+        if let registeredAnchor = self.actionAnchors[extensionId] {
+            anchorView = registeredAnchor
+            anchorRect = registeredAnchor.bounds
+            print("   📍 Using registered anchor for extension: \(extensionId)")
+        } else if let mainWindow = NSApplication.shared.mainWindow,
+                  let contentView = mainWindow.contentView {
+            anchorView = contentView
+            anchorRect = NSRect(
+                x: contentView.bounds.midX,
+                y: contentView.bounds.midY,
+                width: 1,
+                height: 1
+            )
+            print("   📍 Using fallback center anchor")
+        } else {
+            print("   ❌ No suitable anchor view available")
+            return
+        }
+
+        guard let finalAnchorView = anchorView else {
+            print("   ❌ No anchor view available")
+            return
+        }
+
+        // Show the popover
+        popover.show(relativeTo: anchorRect, of: finalAnchorView, preferredEdge: .minY)
+        ExtensionPopupWindowManager.shared.addPopover(popover, forExtension: extensionId)
+
+        print("   ✅ Direct popup displayed successfully")
+    }
+
+    /// Find a suitable tab for the target context by matching with active WebViews
+    /// Prioritizes: exact URL match, then any available registered tab
+    @available(macOS 15.4, *)  // Ensure API availability
+    private func findSuitableTab(for context: WKWebExtensionContext, controller: WKWebExtensionController) -> WKWebExtensionTab? {
+        // Clean up any deallocated WebViews
+        Self.activeWebViews.removeAll { $0.webView == nil }
+
+        print("🔍 Searching for suitable tab in context: \(context.uniqueIdentifier)")
+        print("   Available open tabs in context: \(context.openTabs.count)")
+        print("   Available extension tabs: \(Self.extensionTabs.count)")
+
+        // First, try to find a tab from the registered extension tabs
+        if !Self.extensionTabs.isEmpty {
+            // Get the first available extension tab with a valid WebView
+            for (tabId, extensionTab) in Self.extensionTabs {
+                if let webView = extensionTab.webView(for: context),
+                   let url = extensionTab.url(for: context) {
+                    print("   ✅ Found registered extension tab: \(tabId) with URL: \(url.absoluteString)")
+                    return extensionTab
+                }
+            }
+        }
+
+        // Fallback: check context's open tabs
+        let castedTabs: [WKWebExtensionTab] = context.openTabs.compactMap { $0 as? WKWebExtensionTab }
+        print("   Available context tabs (casted): \(castedTabs.count)")
+
+        if let firstTab = castedTabs.first {
+            print("   ✅ Using first available context tab")
+            return firstTab
+        }
+
+        print("   ❌ No suitable tabs found in context or registry")
+        return nil
+    }
+
+    /// Register a WebView as an active tab for extension support - enhanced to sync with extension tabs
     public static func registerWebView(_ webView: WKWebView, id: String) {
         print("📝 Registering WebView as active tab: \(id)")
-        
+
         // Clean up any deallocated WebViews first
         activeWebViews.removeAll { $0.webView == nil }
-        
+
         // Add new WebView if not already registered
         if !activeWebViews.contains(where: { $0.id == id }) {
-            activeWebViews.append(WeakWebViewWrapper(webView: webView, id: id))
+            let wrapper = WeakWebViewWrapper(webView: webView, id: id)
+            activeWebViews.append(wrapper)
             print("✅ WebView registered. Total active tabs: \(activeWebViews.count)")
+        } else {
+            // Update existing wrapper's URL if already registered
+            if let existing = activeWebViews.first(where: { $0.id == id }) {
+                existing.currentURL = webView.url
+            }
+        }
+
+        // CRITICAL: Configure WebView with extension controller for proper tab discovery
+        if #available(macOS 15.4, *) {
+            let extensionTab = ExtensionTab(webView: webView, id: id)
+            extensionTabs[id] = extensionTab
+
+            // Ensure the WebView is configured with the extension controller
+            // This allows WebKit to automatically discover it as a tab
+            if let controller = sharedExtensionController {
+                webView.configuration.webExtensionController = controller
+                print("✅ Configured WebView \(id) with extension controller")
+
+                // Notify extension contexts about the new tab using WebKit's API
+                for context in sharedExtensionContexts {
+                    context.didOpenTab(extensionTab)
+                    print("✅ Notified extension context \(context.uniqueIdentifier) about new tab \(id)")
+                }
+            }
+            print("📋 Extension tab created and WebView configured for discovery")
         }
     }
     
@@ -126,16 +472,20 @@ public class ExtensionManager: NSObject, ObservableObject, WKWebExtensionControl
     public static func unregisterWebView(id: String) {
         print("🗑️ Unregistering WebView: \(id)")
         activeWebViews.removeAll { $0.id == id }
+
+        // Also remove extension tab
+        if #available(macOS 15.4, *) {
+            if let extensionTab = extensionTabs.removeValue(forKey: id) {
+                // Notify extension contexts about the closed tab using WebKit's API
+                for context in sharedExtensionContexts {
+                    context.didCloseTab(extensionTab, windowIsClosing: false)
+                    print("✅ Notified extension context \(context.uniqueIdentifier) about closed tab \(id)")
+                }
+                print("📋 Extension tab removed and contexts notified")
+            }
+        }
+
         print("✅ WebView unregistered. Total active tabs: \(activeWebViews.count)")
-    }
-    
-    /// Get the first active WebView that can be used as a tab context
-    private static func getActiveWebView() -> WKWebView? {
-        // Clean up any deallocated WebViews
-        activeWebViews.removeAll { $0.webView == nil }
-        
-        // Return the first active WebView
-        return activeWebViews.first?.webView
     }
     
     /// Static method to prepare extension system at app startup
@@ -406,9 +756,14 @@ public class ExtensionManager: NSObject, ObservableObject, WKWebExtensionControl
     
     override public init() {
         super.init()
-        
+
         print("initilization!!!")
-        
+
+        // Set up popup cleanup callback
+        ExtensionPopupWindowManager.shared.onPopoverClosed = { [weak self] extensionId in
+                print("dismiss popup")
+        }
+
         // Use pre-prepared shared components if available
         if Self.isPrepared,
            let sharedController = Self.sharedExtensionController,
@@ -567,7 +922,7 @@ public class ExtensionManager: NSObject, ObservableObject, WKWebExtensionControl
         
         return info
     }
-    
+
     /// Log essential extension status
     private func logExtensionStatus() {
         guard let controller = extensionController,
@@ -985,70 +1340,95 @@ public class ExtensionManager: NSObject, ObservableObject, WKWebExtensionControl
         print("   Extension name: \(context.webExtension.displayName ?? "Unknown")")
         print("   Action label: \(action.label ?? "No label")")
         print("   Popup URL: \(action.popupWebView?.url?.absoluteString ?? "No popup URL")")
-        
+
+        // Track the extension for cleanup
+        let extensionId = context.uniqueIdentifier
+        print("   📋 Delegate called for extension: \(extensionId)")
+
+        // Mark that delegate was called for this extension
+        delegateCallTracker[extensionId] = true
+
         guard let popupWebView = action.popupWebView else {
             print("   ❌ No popup web view available")
             completionHandler(ExtensionError.installationFailed("No popup web view available"))
             return
         }
-        
+
+        // Close any existing popovers for this extension to prevent conflicts
+        ExtensionPopupWindowManager.shared.closeExistingPopoverForExtension(extensionId)
+
         // Grant essential permissions for the popup to function
         context.setPermissionStatus(.grantedExplicitly, for: .activeTab)
         context.setPermissionStatus(.grantedExplicitly, for: .scripting)
-        
-        // Configure the popup WebView
-        popupWebView.configuration.webExtensionController = webExtensionController
+
+        // IMPORTANT: Configure the popup WebView properly for reuse
+        // Ensure the WebView has the correct extension controller without breaking existing state
+        if popupWebView.configuration.webExtensionController == nil {
+            popupWebView.configuration.webExtensionController = webExtensionController
+            print("   🔧 Configured popup WebView with extension controller")
+        }
         popupWebView.isInspectable = true
-        
-        // Create popover for better UX (similar to browser extension popups)
-        let popover = NSPopover()
-        popover.contentSize = NSSize(width: 400, height: 600)
-        popover.behavior = .transient
-        popover.animates = true
-        
-        // Create a view controller to hold the web view
-        let viewController = NSViewController()
-        viewController.view = popupWebView
-        popover.contentViewController = viewController
-        
-        // Try to find action anchor for this extension (following Nook pattern)
-        let extensionId = context.uniqueIdentifier
-        var anchorView: NSView?
-        var anchorRect: NSRect
-        
-        if let registeredAnchor = actionAnchors[extensionId] {
-            anchorView = registeredAnchor
-            anchorRect = registeredAnchor.bounds
-            print("   📍 Using registered anchor for extension: \(extensionId)")
-        } else if let mainWindow = NSApplication.shared.mainWindow,
-                  let contentView = mainWindow.contentView {
-            // Fallback to center of main window
-            anchorView = contentView
-            anchorRect = NSRect(
-                x: contentView.bounds.midX,
-                y: contentView.bounds.midY,
-                width: 1,
-                height: 1
-            )
-            print("   📍 Using fallback center anchor")
-        } else {
-            print("   ❌ No suitable anchor view available")
-            completionHandler(ExtensionError.installationFailed("No anchor view available"))
-            return
+
+        // Use async dispatch to avoid interfering with WebKit's current commit transaction
+        // This follows Nook's approach to prevent issues with repeated popup presentation
+        DispatchQueue.main.async {
+            // Create popover with transient behavior (allows closing by clicking outside)
+            let popover = NSPopover()
+            popover.contentSize = NSSize(width: 400, height: 600)
+            popover.behavior = .transient  // Allow closing by clicking outside
+            popover.animates = true
+
+            // Create a view controller to hold the web view
+            let viewController = NSViewController()
+
+            // CRITICAL FIX: Ensure the WebView is properly prepared for display
+            // Remove from any existing superview to prevent reuse issues
+            popupWebView.removeFromSuperview()
+            viewController.view = popupWebView
+            popover.contentViewController = viewController
+
+            // Set up popover close handler to properly clean up the WebView state
+            popover.delegate = self
+
+            // Try to find action anchor for this extension (following Nook pattern)
+            var anchorView: NSView?
+            var anchorRect: NSRect
+
+            if let registeredAnchor = self.actionAnchors[extensionId] {
+                anchorView = registeredAnchor
+                anchorRect = registeredAnchor.bounds
+                print("   📍 Using registered anchor for extension: \(extensionId)")
+            } else if let mainWindow = NSApplication.shared.mainWindow,
+                      let contentView = mainWindow.contentView {
+                // Fallback to center of main window
+                anchorView = contentView
+                anchorRect = NSRect(
+                    x: contentView.bounds.midX,
+                    y: contentView.bounds.midY,
+                    width: 1,
+                    height: 1
+                )
+                print("   📍 Using fallback center anchor")
+            } else {
+                print("   ❌ No suitable anchor view available")
+                completionHandler(ExtensionError.installationFailed("No anchor view available"))
+                return
+            }
+
+            guard let finalAnchorView = anchorView else {
+                completionHandler(ExtensionError.installationFailed("No anchor view available"))
+                return
+            }
+
+            // Show the popover
+            popover.show(relativeTo: anchorRect, of: finalAnchorView, preferredEdge: .minY)
+
+            // Store the popover for management
+            ExtensionPopupWindowManager.shared.addPopover(popover, forExtension: extensionId)
+
+            print("   ✅ Extension popup displayed as popover (with proper WebView cleanup)")
+            completionHandler(nil)
         }
-        
-        guard let finalAnchorView = anchorView else {
-            completionHandler(ExtensionError.installationFailed("No anchor view available"))
-            return
-        }
-        
-        popover.show(relativeTo: anchorRect, of: finalAnchorView, preferredEdge: .minY)
-        
-        // Keep reference to prevent deallocation
-        ExtensionPopupWindowManager.shared.addPopover(popover)
-        
-        print("   ✅ Extension popup displayed as popover")
-        completionHandler(nil)
     }
     
     public func webExtensionController(_ webExtensionController: WKWebExtensionController,
@@ -1112,6 +1492,78 @@ public class ExtensionManager: NSObject, ObservableObject, WKWebExtensionControl
         print("   Not implemented - no reply will be sent")
         replyHandler(nil, ExtensionError.installationFailed("Inter-app messaging not implemented"))
     }
+
+    // MARK: - NSPopoverDelegate
+
+    public func popoverDidClose(_ notification: Notification) {
+        print("🎯 [ExtensionManager] Popover closed - cleaning up WebView and action state")
+
+        // Get the popover from the notification
+        guard let popover = notification.object as? NSPopover else {
+            print("   ⚠️ Could not get popover from notification")
+            return
+        }
+
+        // Clean up the WebView to ensure it can be reused properly
+        if let viewController = popover.contentViewController,
+           let webView = viewController.view as? WKWebView {
+            print("   🧹 Cleaning up popup WebView for next use")
+
+            // Stop any ongoing loading to prevent state conflicts
+            webView.stopLoading()
+
+            // Clear the WebView's content but keep it ready for reuse
+            webView.loadHTMLString("", baseURL: nil)
+
+            // Remove the WebView from its parent view controller
+            webView.removeFromSuperview()
+
+            // Clear the view controller's view reference
+            viewController.view = NSView()
+
+            // IMPORTANT: DO NOT modify the extension controller configuration
+            // Modifying webExtensionController can break the popup functionality
+            // The WebView should retain its extension controller for proper reuse
+            print("   ✅ WebView cleaned up without breaking extension controller")
+        }
+
+        // Clear the popover's delegate to prevent retain cycles
+        popover.delegate = nil
+
+        // Reset delegate call tracker but don't force background reload
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+            // Reset tracker for this specific extension
+            if let extensionId = ExtensionPopupWindowManager.shared.getExtensionId(for: popover) {
+                self.delegateCallTracker[extensionId] = false
+                print("   🔄 Reset delegate tracker for extension: \(extensionId)")
+            }
+
+            // FIXED: Don't reload background content as it can break action state
+            // Instead, let WebKit naturally reset the action state on next interaction
+            print("   ✅ Popup cleanup completed - ready for next use")
+        }
+    }
+
+    public func popoverShouldClose(_ popover: NSPopover) -> Bool {
+        print("🎯 [ExtensionManager] Popover should close - preparing for cleanup")
+        return true
+    }
+
+    public func popoverWillClose(_ notification: Notification) {
+        print("🎯 [ExtensionManager] Popover will close - preparing for cleanup")
+
+        // This is called just before the popover closes
+        // Minimal preparation to avoid interfering with WebKit's action state
+        guard let popover = notification.object as? NSPopover else { return }
+
+        if let viewController = popover.contentViewController,
+           let webView = viewController.view as? WKWebView {
+
+            // Stop loading to prevent any ongoing operations
+            webView.stopLoading()
+            print("   🛑 Stopped WebView loading")
+        }
+    }
 }
 
 struct ExtensionUtils {
@@ -1162,76 +1614,5 @@ struct ExtensionUtils {
     /// Generate a unique extension identifier
     static func generateExtensionId() -> String {
         return UUID().uuidString.lowercased()
-    }
-}
-
-/// Manager class to handle extension popup windows and popovers
-class ExtensionPopupWindowManager: NSObject, NSWindowDelegate, NSPopoverDelegate {
-    static let shared = ExtensionPopupWindowManager()
-    private var popupWindows = Set<NSWindow>()
-    private var popupPopovers = Set<NSPopover>()
-    
-    private override init() {
-        super.init()
-    }
-    
-    func addWindow(_ window: NSWindow) {
-        popupWindows.insert(window)
-    }
-    
-    func removeWindow(_ window: NSWindow) {
-        popupWindows.remove(window)
-    }
-    
-    func addPopover(_ popover: NSPopover) {
-        popover.delegate = self
-        popupPopovers.insert(popover)
-    }
-    
-    func removePopover(_ popover: NSPopover) {
-        popupPopovers.remove(popover)
-    }
-    
-    // NSWindowDelegate methods
-    func windowWillClose(_ notification: Notification) {
-        if let window = notification.object as? NSWindow {
-            removeWindow(window)
-            print("🗑️ Extension popup window closed and removed from manager")
-        }
-    }
-    
-    func windowShouldClose(_ sender: NSWindow) -> Bool {
-        return true
-    }
-    
-    // NSPopoverDelegate methods
-    func popoverWillClose(_ notification: Notification) {
-        if let popover = notification.object as? NSPopover {
-            removePopover(popover)
-            print("🗑️ Extension popup popover closed and removed from manager")
-        }
-    }
-}
-
-enum ExtensionError: LocalizedError {
-    case unsupportedOS
-    case invalidManifest(String)
-    case installationFailed(String)
-    case permissionDenied
-    case timeout(String)
-    
-    var errorDescription: String? {
-        switch self {
-        case .unsupportedOS:
-            return "Extensions require iOS 18.5+ or macOS 15.5+"
-        case .invalidManifest(let reason):
-            return "Invalid manifest.json: \(reason)"
-        case .installationFailed(let reason):
-            return "Installation failed: \(reason)"
-        case .permissionDenied:
-            return "Permission denied"
-        case .timeout(let reason):
-            return reason
-        }
     }
 }
