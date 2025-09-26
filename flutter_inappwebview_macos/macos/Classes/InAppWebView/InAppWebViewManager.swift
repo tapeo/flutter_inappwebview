@@ -100,11 +100,6 @@ public class InAppWebViewManager: ChannelDelegate {
                 let extensions = ExtensionManager.getAllInstalledExtensions()
                 result(extensions)
                 break
-            case "openExtensionPopup":
-                let extensionId = arguments!["extensionId"] as! String
-                let success = ExtensionManager.openExtensionPopup(extensionId: extensionId)
-                result(success)
-                break
             default:
                 result(FlutterMethodNotImplemented)
                 break

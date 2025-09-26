@@ -2838,7 +2838,7 @@ class MacOSInAppWebViewController extends PlatformInAppWebViewController
     Map<String, dynamic> args = <String, dynamic>{
       'extensionId': extensionId,
     };
-    var result = await _staticChannel.invokeMethod('openExtensionPopup', args);
+    var result = await channel?.invokeMethod('openExtensionPopup', args);
     return result ?? false;
   }
 

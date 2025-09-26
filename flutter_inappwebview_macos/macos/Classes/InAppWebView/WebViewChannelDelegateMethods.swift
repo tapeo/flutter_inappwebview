@@ -90,4 +90,5 @@ public enum WebViewChannelDelegateMethods: String {
     case restoreState = "restoreState"
     case startExtensions = "startExtensions"
     case loadExtension = "loadExtension"
+    case openExtensionPopup = "openExtensionPopup"
 }

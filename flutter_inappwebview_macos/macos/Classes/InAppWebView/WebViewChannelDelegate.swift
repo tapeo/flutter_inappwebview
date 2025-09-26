@@ -694,6 +694,15 @@ public class WebViewChannelDelegate: ChannelDelegate {
             break
         case .loadExtension:
             break
+        case .openExtensionPopup:
+            if let webView = webView {
+                let extensionId = arguments!["extensionId"] as! String
+                let success = webView.extensionManager.openExtensionPopup(for: extensionId)
+                result(success)
+            } else {
+                result(false)
+            }
+            break
         }
     }
     

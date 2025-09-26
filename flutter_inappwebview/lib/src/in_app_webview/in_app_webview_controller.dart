@@ -636,12 +636,12 @@ class InAppWebViewController {
   static Future<List<Map<String, dynamic>>> getAllInstalledExtensions() =>
       PlatformInAppWebViewController.static().getAllInstalledExtensions();
 
-  ///{@macro flutter_inappwebview_platform_interface.PlatformInAppWebViewController.openExtensionPopup}
-  static Future<bool> openExtensionPopup(String extensionId) =>
-      PlatformInAppWebViewController.static().openExtensionPopup(extensionId);
 
   ///{@macro flutter_inappwebview_platform_interface.PlatformInAppWebViewController.getViewId}
   dynamic getViewId() => platform.getViewId();
+
+  ///{@macro flutter_inappwebview_platform_interface.PlatformInAppWebViewController.openExtensionPopup}
+  Future<bool> openExtensionPopup(String extensionId) => platform.openExtensionPopup(extensionId);
 
   ///{@macro flutter_inappwebview_platform_interface.PlatformInAppWebViewController.dispose}
   void dispose({bool isKeepAlive = false}) =>
