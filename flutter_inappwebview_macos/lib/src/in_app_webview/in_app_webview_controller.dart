@@ -2806,6 +2806,19 @@ class MacOSInAppWebViewController extends PlatformInAppWebViewController
     }
   }
 
+  @override
+  Future<bool> startExtensions() async {
+    Map<String, dynamic> args = <String, dynamic>{};
+    var result = await _staticChannel.invokeMethod('startExtensions', args);
+    return result ?? false;
+  }
+
+  @override
+  Future<void> loadExtension() async {
+    Map<String, dynamic> args = <String, dynamic>{};
+    await _staticChannel.invokeMethod('loadExtension', args);
+  }
+
   /// The callback set by the user to decide whether to proceed with a download.
   ShouldProceedWithDownloadCallback? onDownloadStartRequest;
 }

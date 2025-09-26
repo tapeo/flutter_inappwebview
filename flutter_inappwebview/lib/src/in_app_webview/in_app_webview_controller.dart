@@ -622,6 +622,16 @@ class InAppWebViewController {
   static Future<String> get tRexRunnerCss =>
       PlatformInAppWebViewController.static().tRexRunnerCss;
 
+  /// Initializes the ExtensionManager for content blocking and web extensions.
+  /// This is a macOS-specific method that starts the extension loading process.
+  /// Returns true if the initialization started successfully, false otherwise.
+  /// On non-macOS platforms, this method returns false.
+  static Future<bool> startExtensions() =>
+      PlatformInAppWebViewController.static().startExtensions();
+
+  static Future<void> loadExtension() =>
+      PlatformInAppWebViewController.static().loadExtension();
+
   ///{@macro flutter_inappwebview_platform_interface.PlatformInAppWebViewController.getViewId}
   dynamic getViewId() => platform.getViewId();
 

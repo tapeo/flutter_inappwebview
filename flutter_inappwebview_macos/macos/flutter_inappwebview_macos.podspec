@@ -15,12 +15,12 @@ A new Flutter plugin project.
 
   s.source           = { :path => '.' }
   s.source_files     = 'Classes/**/*'
-  s.resources = 'Storyboards/**/*.storyboard'
+  s.resources = ['Storyboards/**/*.storyboard', 'Resources/*.zip']
   s.public_header_files = 'Classes/**/*.h'
   s.dependency 'FlutterMacOS'
   s.resource_bundles = {'flutter_inappwebview_macos_privacy' => ['Resources/PrivacyInfo.xcprivacy']}
 
-  s.platform = :osx, '11.3'
+  s.platform = :osx, '15.4'
   s.pod_target_xcconfig = { 'DEFINES_MODULE' => 'YES' }
   s.swift_version = '5.0'
 

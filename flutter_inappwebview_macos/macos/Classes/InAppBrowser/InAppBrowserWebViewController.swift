@@ -53,7 +53,7 @@ public class InAppBrowserWebViewController: NSViewController, InAppBrowserDelega
             webView = InAppWebView(id: nil,
                                    plugin: nil,
                                    frame: .zero,
-                                   configuration: preWebviewConfiguration,
+                                   cc: preWebviewConfiguration,
                                    userScripts: userScripts)
         }
         

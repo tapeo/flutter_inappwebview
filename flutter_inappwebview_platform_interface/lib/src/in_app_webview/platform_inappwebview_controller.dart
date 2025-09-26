@@ -2581,6 +2581,23 @@ abstract class PlatformInAppWebViewController extends PlatformInterface
   Future<String> get tRexRunnerCss => throw UnimplementedError(
       'tRexRunnerCss is not implemented on the current platform');
 
+  ///{@template flutter_inappwebview_platform_interface.PlatformInAppWebViewController.startExtensions}
+  ///Initializes the ExtensionManager for content blocking and web extensions.
+  ///This method starts the extension loading process asynchronously.
+  ///
+  ///**Officially Supported Platforms/Implementations**:
+  ///- macOS
+  ///{@endtemplate}
+  Future<bool> startExtensions() {
+    throw UnimplementedError(
+        'startExtensions is not implemented on the current platform');
+  }
+
+  Future<void> loadExtension() {
+    throw UnimplementedError(
+        'loadExtension is not implemented on the current platform');
+  }
+
   ///{@template flutter_inappwebview_platform_interface.PlatformInAppWebViewController.setOptions}
   ///Use [setSettings] instead.
   ///{@endtemplate}

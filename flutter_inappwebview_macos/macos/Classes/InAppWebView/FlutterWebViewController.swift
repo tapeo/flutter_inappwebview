@@ -31,7 +31,9 @@ public class FlutterWebViewController: NSView, Disposable {
         
         let settings = InAppWebViewSettings()
         let _ = settings.parse(settings: initialSettings)
-        let preWebviewConfiguration = InAppWebView.preWKWebViewConfiguration(settings: settings)
+        
+        // Use extension-enabled configuration instead of standard configuration
+        let preWebviewConfiguration: WKWebViewConfiguration = InAppWebView.preWKWebViewConfiguration(settings: settings)
         
         var webView: InAppWebView?
         
@@ -48,7 +50,7 @@ public class FlutterWebViewController: NSView, Disposable {
             webView = InAppWebView(id: viewId,
                                    plugin: plugin,
                                    frame: self.bounds,
-                                   configuration: preWebviewConfiguration,
+                                   cc: preWebviewConfiguration,
                                    userScripts: userScripts)
         }
 

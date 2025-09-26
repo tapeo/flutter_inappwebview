@@ -88,4 +88,6 @@ public enum WebViewChannelDelegateMethods: String {
     case loadSimulatedRequest = "loadSimulatedRequest"
     case saveState = "saveState"
     case restoreState = "restoreState"
+    case startExtensions = "startExtensions"
+    case loadExtension = "loadExtension"
 }

@@ -681,6 +681,19 @@ public class WebViewChannelDelegate: ChannelDelegate {
                 result(false)
             }
             break
+        case .startExtensions:
+              Task {
+                let success = await ExtensionManager.prepareExtensionSystem()
+                if success {
+                    print("🎉 Extension system ready!")
+                    // Now you can create WebViews with instant ad blocking
+                } else {
+                    print("❌ Extension setup failed")
+                }
+            }
+            break
+        case .loadExtension:
+            break
         }
     }
     
