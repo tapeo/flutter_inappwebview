@@ -2819,6 +2819,29 @@ class MacOSInAppWebViewController extends PlatformInAppWebViewController
     await _staticChannel.invokeMethod('loadExtension', args);
   }
 
+  @override
+  Future<List<Map<String, dynamic>>> getAllInstalledExtensions() async {
+    Map<String, dynamic> args = <String, dynamic>{};
+    var result = await _staticChannel.invokeMethod('getAllInstalledExtensions', args);
+
+    if (result == null) return [];
+
+    // Convert the result to the proper type
+    final List<dynamic> resultList = List<dynamic>.from(result);
+    return resultList
+        .map((item) => Map<String, dynamic>.from(item as Map))
+        .toList();
+  }
+
+  @override
+  Future<bool> openExtensionPopup(String extensionId) async {
+    Map<String, dynamic> args = <String, dynamic>{
+      'extensionId': extensionId,
+    };
+    var result = await _staticChannel.invokeMethod('openExtensionPopup', args);
+    return result ?? false;
+  }
+
   /// The callback set by the user to decide whether to proceed with a download.
   ShouldProceedWithDownloadCallback? onDownloadStartRequest;
 }

@@ -464,6 +464,53 @@ public class ExtensionManager: NSObject, ObservableObject, WKWebExtensionControl
         return Self.sharedExtensionContexts
     }
 
+    /// Get all installed extensions info for Flutter
+    public static func getAllInstalledExtensions() -> [[String: Any]] {
+        return sharedExtensionContexts.map { context in
+            return [
+                "id": context.uniqueIdentifier,
+                "name": context.webExtension.displayName ?? "Unknown",
+                "version": context.webExtension.version ?? "Unknown",
+                "isLoaded": context.isLoaded,
+                "hasPopup": context.webExtension.hasCommands || context.webExtension.hasOptionsPage,
+                "description": context.webExtension.displayVersion ?? ""
+            ]
+        }
+    }
+
+    /// Static method to open extension popup programmatically by extension ID
+    public static func openExtensionPopup(extensionId: String) -> Bool {
+        guard let context = sharedExtensionContexts.first(where: { $0.uniqueIdentifier == extensionId }),
+              let controller = sharedExtensionController else {
+            print("❌ Extension not found or controller not available: \(extensionId)")
+            return false
+        }
+
+        print("🎯 Opening extension popup programmatically for: \(extensionId)")
+        print("   Extension name: \(context.webExtension.displayName ?? "Unknown")")
+
+        Task { @MainActor in
+            do {
+                // Get the first available tab from the extension controller
+                guard let firstTab = controller.extensionContexts.first?.openTabs.first else {
+                    print("❌ No tabs available in extension context")
+                    try await context.performAction(for: nil)
+                    print("✅ Extension action performed without tab context")
+                    return
+                }
+
+                try await context.performAction(for: firstTab as! WKWebExtensionTab)
+                print("✅ Extension action performed successfully with tab context")
+            } catch {
+                print("❌ Failed to perform extension action: \(error)")
+                // If performAction fails, it might mean no popup is defined
+                print("   This extension may not have a popup defined")
+            }
+        }
+
+        return true
+    }
+
     /// Get extension info for debugging
     public var extensionInfo: [String] {
         return Self.sharedExtensionContexts.map { context in
