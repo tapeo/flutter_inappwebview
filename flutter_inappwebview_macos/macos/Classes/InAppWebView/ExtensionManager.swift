@@ -519,61 +519,75 @@ public class ExtensionManager: NSObject, ObservableObject, WKWebExtensionControl
             // Try to load from bundled resources first
             var extensionsLoaded = 0
             
-            // First try to load from bundled resources (plugin bundle)
-            let pluginBundle = Bundle(for: ExtensionManager.self)
-            
-            // Check multiple possible resource locations in framework
-            let possibleResourcePaths = [
-                pluginBundle.resourceURL,
-                pluginBundle.bundleURL.appendingPathComponent("Versions/A/Resources"),
-                pluginBundle.bundleURL.appendingPathComponent("Resources")
-            ].compactMap { $0 }
-            
-            for resourcesURL in possibleResourcePaths {
-                if FileManager.default.fileExists(atPath: resourcesURL.path) {
-                    print("🔍 Plugin bundle path: \(pluginBundle.bundlePath)")
-                    print("🔍 Resources URL: \(resourcesURL.path)")
-                    do {
-                        let contents = try FileManager.default.contentsOfDirectory(at: resourcesURL, includingPropertiesForKeys: nil)
-                        print("🔍 Found \(contents.count) items in Resources directory:")
+            // Load ZIP extensions from a specific app folder (e.g., in Documents)
+            let documentsURL = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
+            let extensionsURL = documentsURL.appendingPathComponent("Extensions")
+
+            print("🔍 Extensions folder path: \(extensionsURL.path)")
+
+            // Create the Extensions directory if it doesn't exist
+            do {
+                try FileManager.default.createDirectory(at: extensionsURL, withIntermediateDirectories: true, attributes: nil)
+                print("📁 Created Extensions directory")
+            } catch {
+                print("⚠️ Could not create Extensions directory: \(error)")
+                // If creation fails, it might already exist, so proceed
+            }
+
+            // Now check if the directory exists and is accessible
+            do {
+                let resourceValues = try extensionsURL.resourceValues(forKeys: [.isDirectoryKey])
+                
+                print("🔍 Extensions path confirmed to be a directory")
+                
+                do {
+                    // Read contents (use .skipsHiddenFiles if you want to ignore hidden files)
+                    let contents = try FileManager.default.contentsOfDirectory(at: extensionsURL, includingPropertiesForKeys: nil, options: [.skipsHiddenFiles])
+                    print("🔍 Found \(contents.count) items in Extensions directory:")
                         for item in contents {
                             print("   - \(item.lastPathComponent)")
                         }
                         let zipFiles = contents.filter { $0.pathExtension.lowercased() == "zip" }
                         
                         for zipFile in zipFiles {
-                            print("📦 Found bundled extension: \(zipFile.lastPathComponent)")
+                        print("📦 Found extension: \(zipFile.lastPathComponent)")
                             do {
                                 let context = try await installBundledExtension(from: zipFile)
                                 sharedExtensionContexts.append(context)
                                 extensionsLoaded += 1
-                                print("✅ Bundled extension '\(zipFile.lastPathComponent)' loaded and ready")
+                            print("✅ Extension '\(zipFile.lastPathComponent)' loaded and ready")
                             } catch {
-                                print("⚠️ Failed to load bundled extension '\(zipFile.lastPathComponent)': \(error)")
+                            print("⚠️ Failed to load extension '\(zipFile.lastPathComponent)': \(error)")
                                 continue
                             }
                         }
                         
                         if zipFiles.isEmpty {
-                            print("📦 No ZIP extensions found in \(resourcesURL.path)")
+                        print("📦 No ZIP extensions found in \(extensionsURL.path)")
+                        print("💡 Tip: Place your ZIP extension files in ~/Documents/Extensions/ to load them.")
                         }
                     } catch {
-                        print("📦 Could not read Resources directory \(resourcesURL.path): \(error)")
-                    }
-                } else {
-                    print("🔍 Resources path does not exist: \(resourcesURL.path)")
+                    // More detailed error logging
+                    let nsError = error as NSError
+                    print("📦 Could not read Extensions directory \(extensionsURL.path):")
+                    print("   - Code: \(nsError.code)")
+                    print("   - Domain: \(nsError.domain)")
+                    print("   - Description: \(nsError.localizedDescription)")
+                    print("   - Reason: \(nsError.localizedFailureReason ?? "None")")
                 }
+            } catch {
+                print("❌ Could not check if Extensions is a directory: \(error)")
             }
             
             // Fallback to downloading uBlock Origin Lite if no bundled extensions loaded
-            if extensionsLoaded == 0 {
-                print("📥 Downloading fresh uBlock Origin Lite...")
-                let url = URL(string: "https://github.com/uBlockOrigin/uBOL-home/releases/download/2025.921.2008/uBOLite_2025.921.2008.safari.zip")!
-                let context = try await installExtensionWithReturn(from: url)
-                sharedExtensionContexts.append(context)
-                extensionsLoaded += 1
-                print("✅ Fresh extension downloaded and ready")
-            }
+            // if extensionsLoaded == 0 {
+            //     print("📥 Downloading fresh uBlock Origin Lite...")
+            //     let url = URL(string: "https://github.com/uBlockOrigin/uBOL-home/releases/download/2025.921.2008/uBOLite_2025.921.2008.safari.zip")!
+            //     let context = try await installExtensionWithReturn(from: url)
+            //     sharedExtensionContexts.append(context)
+            //     extensionsLoaded += 1
+            //     print("✅ Fresh extension downloaded and ready")
+            // }
             
             if extensionsLoaded > 0 {
                 isPrepared = true
