@@ -70,13 +70,6 @@ public class FlutterWebViewController: NSView, Disposable {
         webView!.settings = settings
         webView!.prepare()
         webView!.windowCreated = true
-        
-        if let extensionController = extensionManager.extensionController {
-            print("Attaching extension controller to initial WebView configuration2")
-            webView!.configuration.webExtensionController = extensionController
-            webView!.configuration.preferences.javaScriptEnabled = true
-            webView!.configuration.defaultWebpagePreferences.allowsContentJavaScript = true
-        }
     }
     
     required init?(coder nsCoder: NSCoder) {

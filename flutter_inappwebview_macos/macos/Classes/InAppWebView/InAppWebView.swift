@@ -98,7 +98,6 @@ public class InAppWebView: WKWebView, WKUIDelegate,
 
         // Register this WebView as an active tab for extensions
         if let webViewId = id {
-            self.extensionManager.extensionController?.delegate = self.extensionManager
             self.extensionManager.registerWebView(self, id: String(describing: webViewId))
         }
     }
