@@ -44,8 +44,8 @@ public class InAppBrowserWebViewController: NSViewController, InAppBrowserDelega
         for initialUserScript in initialUserScripts {
             userScripts.append(UserScript.fromMap(map: initialUserScript, windowId: windowId)!)
         }
-        
-        let preWebviewConfiguration = InAppWebView.preWKWebViewConfiguration(settings: webViewSettings)
+                
+        let preWebviewConfiguration = InAppWebView.preWKWebViewConfiguration(settings: webViewSettings, configuration: WKWebViewConfiguration())
         if let wId = windowId, let webViewTransport = plugin.inAppWebViewManager?.windowWebViews[wId] {
             webView = webViewTransport.webView
             webView!.initialUserScripts = userScripts
@@ -106,20 +106,20 @@ public class InAppBrowserWebViewController: NSViewController, InAppBrowserDelega
         } else {
             if #available(macOS 10.13, *) {
                 if let contentBlockers = webView?.settings?.contentBlockers, contentBlockers.count > 0 {
-                    ContentBlockerManager.shared.getOrCompileRuleList(contentBlockers: contentBlockers) { (contentRuleList, error) in
-                        if let error = error {
-                            print("ContentBlocker compilation error: \(error.localizedDescription)")
-                            // Continue loading even if content blockers fail
-                            self.initLoad()
-                            return
-                        }
+                    // ContentBlockerManager.shared.getOrCompileRuleList(contentBlockers: contentBlockers) { (contentRuleList, error) in
+                    //     if let error = error {
+                    //         print("ContentBlocker compilation error: \(error.localizedDescription)")
+                    //         // Continue loading even if content blockers fail
+                    //         self.initLoad()
+                    //         return
+                    //     }
                         
-                        if let contentRuleList = contentRuleList {
-                            self.webView!.configuration.userContentController.add(contentRuleList)
-                        }
+                    //     if let contentRuleList = contentRuleList {
+                    //         self.webView!.configuration.userContentController.add(contentRuleList)
+                    //     }
                         
-                        self.initLoad()
-                    }
+                    //     self.initLoad()
+                    // }
                     return
                 }
             }

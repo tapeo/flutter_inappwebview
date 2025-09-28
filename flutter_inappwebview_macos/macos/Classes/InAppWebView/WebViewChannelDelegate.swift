@@ -682,7 +682,7 @@ public class WebViewChannelDelegate: ChannelDelegate {
             }
             break
         case .startExtensions:
-              Task {
+            Task {
                 let success = await ExtensionManager.prepareExtensionSystem()
                 if success {
                     print("🎉 Extension system ready!")
@@ -690,6 +690,7 @@ public class WebViewChannelDelegate: ChannelDelegate {
                 } else {
                     print("❌ Extension setup failed")
                 }
+                result(success)
             }
             break
         case .loadExtension:

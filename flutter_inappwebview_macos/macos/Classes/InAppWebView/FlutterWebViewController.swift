@@ -13,6 +13,8 @@ public class FlutterWebViewController: NSView, Disposable {
     
     var keepAliveId: String?
 
+    let extensionManager = ExtensionManager()
+
     init(plugin: InAppWebViewFlutterPlugin, withFrame frame: CGRect, viewIdentifier viewId: Any, params: NSDictionary) {
         super.init(frame: frame)
         
@@ -33,7 +35,7 @@ public class FlutterWebViewController: NSView, Disposable {
         let _ = settings.parse(settings: initialSettings)
         
         // Use extension-enabled configuration instead of standard configuration
-        let preWebviewConfiguration: WKWebViewConfiguration = InAppWebView.preWKWebViewConfiguration(settings: settings)
+        let preWebviewConfiguration: WKWebViewConfiguration = InAppWebView.preWKWebViewConfiguration(settings: settings, configuration: WKWebViewConfiguration())
         
         var webView: InAppWebView?
         
@@ -68,6 +70,13 @@ public class FlutterWebViewController: NSView, Disposable {
         webView!.settings = settings
         webView!.prepare()
         webView!.windowCreated = true
+        
+        if let extensionController = extensionManager.extensionController {
+            print("Attaching extension controller to initial WebView configuration2")
+            webView!.configuration.webExtensionController = extensionController
+            webView!.configuration.preferences.javaScriptEnabled = true
+            webView!.configuration.defaultWebpagePreferences.allowsContentJavaScript = true
+        }
     }
     
     required init?(coder nsCoder: NSCoder) {
@@ -114,22 +123,23 @@ public class FlutterWebViewController: NSView, Disposable {
         // Load initial content if no windowId or if windowId was provided but window doesn't exist
         if windowId == nil || (windowId != nil && webView.windowId == nil) {
             if #available(macOS 10.13, *) {
-                webView.configuration.userContentController.removeAllContentRuleLists()
+                // webView.configuration.userContentController.removeAllContentRuleLists()
+                
                 if let contentBlockers = webView.settings?.contentBlockers, contentBlockers.count > 0 {
-                    ContentBlockerManager.shared.getOrCompileRuleList(contentBlockers: contentBlockers) { (contentRuleList, error) in
-                        if let error = error {
-                            print("ContentBlocker compilation error: \(error.localizedDescription)")
-                            // Continue loading even if content blockers fail
-                            self.load(initialUrlRequest: initialUrlRequest, initialFile: initialFile, initialData: initialData)
-                            return
-                        }
+                    // ContentBlockerManager.shared.getOrCompileRuleList(contentBlockers: contentBlockers) { (contentRuleList, error) in
+                    //     if let error = error {
+                    //         print("ContentBlocker compilation error: \(error.localizedDescription)")
+                    //         // Continue loading even if content blockers fail
+                    //         self.load(initialUrlRequest: initialUrlRequest, initialFile: initialFile, initialData: initialData)
+                    //         return
+                    //     }
                         
-                        if let contentRuleList = contentRuleList {
-                            webView.configuration.userContentController.add(contentRuleList)
-                        }
+                    //     if let contentRuleList = contentRuleList {
+                    //         webView.configuration.userContentController.add(contentRuleList)
+                    //     }
                         
-                        self.load(initialUrlRequest: initialUrlRequest, initialFile: initialFile, initialData: initialData)
-                    }
+                    //     self.load(initialUrlRequest: initialUrlRequest, initialFile: initialFile, initialData: initialData)
+                    // }
                     return
                 }
             }
@@ -140,6 +150,7 @@ public class FlutterWebViewController: NSView, Disposable {
         }
     }
     
+
     func load(initialUrlRequest: [String:Any?]?, initialFile: String?, initialData: [String: String?]?) {
         guard let webView = webView() else {
             return

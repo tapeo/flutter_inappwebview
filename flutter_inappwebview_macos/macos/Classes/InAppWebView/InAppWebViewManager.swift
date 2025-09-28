@@ -59,22 +59,23 @@ public class InAppWebViewManager: ChannelDelegate {
                 })
             case "clearContentBlockerCache":
                 if #available(macOS 10.13, *) {
-                    ContentBlockerManager.shared.clearCache()
+                    // ContentBlockerManager.shared.clearCache()
                 }
                 result(true)
             case "precompileContentBlockersFromUrls":
-                if #available(macOS 10.13, *) {
-                    let urls = arguments!["urls"] as! [String]
-                    ContentBlockerManager.shared.precompileContentBlockersFromUrls(urls: urls) { (success, error) in
-                        if let error = error {
-                            result(FlutterError(code: "CONTENT_BLOCKER_ERROR", message: error.localizedDescription, details: nil))
-                        } else {
-                            result(success)
-                        }
-                    }
-                } else {
-                    result(false)
-                }
+                // if #available(macOS 10.13, *) {
+                //     let urls = arguments!["urls"] as! [String]
+                //     ContentBlockerManager.shared.precompileContentBlockersFromUrls(urls: urls) { (success, error) in
+                //         if let error = error {
+                //             result(FlutterError(code: "CONTENT_BLOCKER_ERROR", message: error.localizedDescription, details: nil))
+                //         } else {
+                //             result(success)
+                //         }
+                //     }
+                // } else {
+                //     result(false)
+                // }
+                result(true)
             case "setJavaScriptBridgeName":
                 let bridgeName = arguments!["bridgeName"] as! String
                 JavaScriptBridgeJS.set_JAVASCRIPT_BRIDGE_NAME(bridgeName: bridgeName)
@@ -92,12 +93,13 @@ public class InAppWebViewManager: ChannelDelegate {
                     } else {
                         print("❌ Extension setup failed")
                     }
+                    result(success)
                 }
                 break
             case "loadExtension":
                 break
             case "getAllInstalledExtensions":
-                let extensions = ExtensionManager.getAllInstalledExtensions()
+                let extensions = ExtensionManager.shared.getAllInstalledExtensions()
                 result(extensions)
                 break
             default:

@@ -38,172 +38,24 @@ private class WeakWebViewWrapper: NSObject {
     }
 }
 
-// MARK: - WKWebExtensionTab Implementation
-@available(macOS 15.4, *)
-private class ExtensionTab: NSObject, WKWebExtensionTab {
-    private weak var webView: WKWebView?
-    private let tabId: String
-
-    init(webView: WKWebView, id: String) {
-        self.webView = webView
-        self.tabId = id
-        super.init()
-    }
-
-    // MARK: - Required WKWebExtensionTab Methods
-
-    func url(for context: WKWebExtensionContext) -> URL? {
-        return webView?.url
-    }
-
-    func title(for context: WKWebExtensionContext) -> String? {
-        return webView?.title
-    }
-
-    func webView(for context: WKWebExtensionContext) -> WKWebView? {
-        return webView
-    }
-
-    func isSelected(for context: WKWebExtensionContext) -> Bool {
-        // For simplicity, consider the tab selected if it has a WebView
-        return webView != nil
-    }
-
-    func isLoadingComplete(for context: WKWebExtensionContext) -> Bool {
-        return webView?.isLoading == false
-    }
-
-    func indexInWindow(for context: WKWebExtensionContext) -> Int {
-        return 0 // Single tab for now
-    }
-
-    func window(for context: WKWebExtensionContext) -> WKWebExtensionWindow? {
-        return nil // Not implementing windows for now
-    }
-
-    func size(for context: WKWebExtensionContext) -> CGSize {
-        return webView?.frame.size ?? CGSize.zero
-    }
-    func isPinned(for context: WKWebExtensionContext) -> Bool {
-        return false
-    }
-
-    func isMuted(for context: WKWebExtensionContext) -> Bool {
-        return false
-    }
-
-    func isPlayingAudio(for context: WKWebExtensionContext) -> Bool {
-        return false
-    }
-
-    func isReaderModeAvailable(for context: WKWebExtensionContext) -> Bool {
-        return false
-    }
-
-    func isReaderModeActive(for context: WKWebExtensionContext) -> Bool {
-        return false
-    }
-
-    func pendingURL(for context: WKWebExtensionContext) -> URL? {
-        return nil
-    }
-
-    func parentTab(for context: WKWebExtensionContext) -> WKWebExtensionTab? {
-        return nil
-    }
-
-    func shouldBypassPermissions(for context: WKWebExtensionContext) -> Bool {
-        return true // Allow bypass for testing
-    }
-
-    func shouldGrantPermissionsOnUserGesture(for context: WKWebExtensionContext) -> Bool {
-        return true
-    }
-
-    // MARK: - Action Methods (with basic implementations)
-
-    func activate(for context: WKWebExtensionContext, completionHandler: @escaping (Error?) -> Void) {
-        completionHandler(nil)
-    }
-
-    func close(for context: WKWebExtensionContext, completionHandler: @escaping (Error?) -> Void) {
-        completionHandler(nil)
-    }
-
-    func loadURL(_ url: URL, for context: WKWebExtensionContext, completionHandler: @escaping (Error?) -> Void) {
-        webView?.load(URLRequest(url: url))
-        completionHandler(nil)
-    }
-
-    func reload(fromOrigin: Bool, for context: WKWebExtensionContext, completionHandler: @escaping (Error?) -> Void) {
-        if fromOrigin {
-            webView?.reloadFromOrigin()
-        } else {
-            webView?.reload()
-        }
-        completionHandler(nil)
-    }
-
-    func goBack(for context: WKWebExtensionContext, completionHandler: @escaping (Error?) -> Void) {
-        webView?.goBack()
-        completionHandler(nil)
-    }
-
-    func goForward(for context: WKWebExtensionContext, completionHandler: @escaping (Error?) -> Void) {
-        webView?.goForward()
-        completionHandler(nil)
-    }
-
-    func setSelected(_ selected: Bool, for context: WKWebExtensionContext, completionHandler: @escaping (Error?) -> Void) {
-        completionHandler(nil)
-    }
-
-    func setPinned(_ pinned: Bool, for context: WKWebExtensionContext, completionHandler: @escaping (Error?) -> Void) {
-        completionHandler(nil)
-    }
-
-    func setMuted(_ muted: Bool, for context: WKWebExtensionContext, completionHandler: @escaping (Error?) -> Void) {
-        completionHandler(nil)
-    }
-
-    func setZoomFactor(_ factor: Double, for context: WKWebExtensionContext, completionHandler: @escaping (Error?) -> Void) {
-        webView?.pageZoom = factor
-        completionHandler(nil)
-    }
-
-    func setReaderModeActive(_ active: Bool, for context: WKWebExtensionContext, completionHandler: @escaping (Error?) -> Void) {
-        completionHandler(nil)
-    }
-
-    func setParentTab(_ parent: WKWebExtensionTab?, for context: WKWebExtensionContext, completionHandler: @escaping (Error?) -> Void) {
-        completionHandler(nil)
-    }
-
-    func duplicate(using configuration: WKWebExtension.TabConfiguration, for context: WKWebExtensionContext, completionHandler: @escaping (WKWebExtensionTab?, Error?) -> Void) {
-        completionHandler(nil, NSError(domain: "ExtensionTab", code: 1, userInfo: [NSLocalizedDescriptionKey: "Duplication not supported"]))
-    }
-
-    func detectWebpageLocale(for context: WKWebExtensionContext, completionHandler: @escaping (Locale?, Error?) -> Void) {
-        completionHandler(Locale.current, nil)
-    }
-}
-
 public class ExtensionManager: NSObject, ObservableObject, WKWebExtensionControllerDelegate, NSPopoverDelegate {
-    
+
+    // Shared instance for app-wide access
+    public static let shared = ExtensionManager()
+
+    // Static shared state for global extension preparation
+    private static var globalExtensionController: WKWebExtensionController?
+    private static var globalExtensionContexts: [WKWebExtensionContext] = []
+    private static var isGloballyPrepared = false
+
     public var extensionContext: WKWebExtensionContext?
     public var extensionController: WKWebExtensionController?
-    
-    // Static shared components for reuse
-    private static var sharedExtensionController: WKWebExtensionController?
-    private static var sharedExtensionContexts: [WKWebExtensionContext] = []
-    private static var isPrepared = false
-    
-    // Track active WebViews for tab support - now with URL tracking
-    private static var activeWebViews: [WeakWebViewWrapper] = []
 
-    // Track extension tabs
-    @available(macOS 15.4, *)
-    private static var extensionTabs: [String: ExtensionTab] = [:]
+    // Instance state (uses global state when available)
+    private var isPrepared = false
+
+    // Track active WebViews for tab support - now with URL tracking
+    private var activeWebViews: [WeakWebViewWrapper] = []
     
     private static let commonPermissions: [WKWebExtension.Permission] = [
         .storage,
@@ -240,7 +92,7 @@ public class ExtensionManager: NSObject, ObservableObject, WKWebExtensionControl
         ExtensionPopupWindowManager.shared.closeExistingPopoverForExtension(extensionId)
 
         // Find the specific extension context by ID
-        guard let targetContext = Self.sharedExtensionContexts.first(where: { $0.uniqueIdentifier == extensionId }) else {
+        guard let targetContext = Self.globalExtensionContexts.first(where: { $0.uniqueIdentifier == extensionId }) else {
             print("❌ Extension context not found for ID: \(extensionId)")
             return false
         }
@@ -391,29 +243,19 @@ public class ExtensionManager: NSObject, ObservableObject, WKWebExtensionControl
 
         print("   ✅ Direct popup displayed successfully")
     }
+    
+    popup settings not synced with webview, maybe is the problem?
 
     /// Find a suitable tab for the target context by matching with active WebViews
     /// Prioritizes: exact URL match, then any available registered tab
     @available(macOS 15.4, *)  // Ensure API availability
-    private func findSuitableTab(for context: WKWebExtensionContext, controller: WKWebExtensionController) -> WKWebExtensionTab? {
+    public func findSuitableTab(for context: WKWebExtensionContext, controller: WKWebExtensionController) -> WKWebExtensionTab? {
         // Clean up any deallocated WebViews
-        Self.activeWebViews.removeAll { $0.webView == nil }
+        self.activeWebViews.removeAll { $0.webView == nil }
 
         print("🔍 Searching for suitable tab in context: \(context.uniqueIdentifier)")
         print("   Available open tabs in context: \(context.openTabs.count)")
-        print("   Available extension tabs: \(Self.extensionTabs.count)")
 
-        // First, try to find a tab from the registered extension tabs
-        if !Self.extensionTabs.isEmpty {
-            // Get the first available extension tab with a valid WebView
-            for (tabId, extensionTab) in Self.extensionTabs {
-                if let webView = extensionTab.webView(for: context),
-                   let url = extensionTab.url(for: context) {
-                    print("   ✅ Found registered extension tab: \(tabId) with URL: \(url.absoluteString)")
-                    return extensionTab
-                }
-            }
-        }
 
         // Fallback: check context's open tabs
         let castedTabs: [WKWebExtensionTab] = context.openTabs.compactMap { $0 as? WKWebExtensionTab }
@@ -429,8 +271,31 @@ public class ExtensionManager: NSObject, ObservableObject, WKWebExtensionControl
     }
 
     /// Register a WebView as an active tab for extension support - enhanced to sync with extension tabs
-    public static func registerWebView(_ webView: WKWebView, id: String) {
+    public func registerWebView(_ webView: WKWebView, id: String) {
         print("📝 Registering WebView as active tab: \(id)")
+
+        // Check if extension system is prepared, and try to load global state if available
+        if !isPrepared || extensionController == nil {
+            // Try to load from global state if available
+            if Self.isGloballyPrepared, let globalController = Self.globalExtensionController {
+                print("🔄 Loading globally prepared extensions into instance")
+                extensionController = globalController
+                extensionContext = Self.globalExtensionContexts.first
+                isPrepared = true
+                isInitialized = true
+            } else {
+                print("⚠️ Extension system not prepared yet - registering WebView but skipping extension integration")
+
+                // Still register the WebView for basic tracking
+                activeWebViews.removeAll { $0.webView == nil }
+                if !activeWebViews.contains(where: { $0.id == id }) {
+                    let wrapper = WeakWebViewWrapper(webView: webView, id: id)
+                    activeWebViews.append(wrapper)
+                    print("✅ WebView registered (without extension integration). Total active tabs: \(activeWebViews.count)")
+                }
+                return
+            }
+        }
 
         // Clean up any deallocated WebViews first
         activeWebViews.removeAll { $0.webView == nil }
@@ -446,44 +311,54 @@ public class ExtensionManager: NSObject, ObservableObject, WKWebExtensionControl
                 existing.currentURL = webView.url
             }
         }
+        
+        // Ensure the WebView is configured with the extension controller
+        // This allows WebKit to automatically discover it as a tab
+        if let controller = extensionController {
+            webView.configuration.webExtensionController = controller
 
-        // CRITICAL: Configure WebView with extension controller for proper tab discovery
-        if #available(macOS 15.4, *) {
-            let extensionTab = ExtensionTab(webView: webView, id: id)
-            extensionTabs[id] = extensionTab
+            self.loadExtension()
+            
+            // print("✅ Configured WebView \(id) with extension controller")
 
-            // Ensure the WebView is configured with the extension controller
-            // This allows WebKit to automatically discover it as a tab
-            if let controller = sharedExtensionController {
-                webView.configuration.webExtensionController = controller
-                print("✅ Configured WebView \(id) with extension controller")
+            // let tabWeb: WKWebExtensionTab = extensionTab as WKWebExtensionTab
+            // print("tab web: \(tabWeb)")
 
-                // Notify extension contexts about the new tab using WebKit's API
-                for context in sharedExtensionContexts {
-                    context.didOpenTab(extensionTab)
-                    print("✅ Notified extension context \(context.uniqueIdentifier) about new tab \(id)")
-                }
-            }
-            print("📋 Extension tab created and WebView configured for discovery")
+            // Notify extension contexts about the new tab using WebKit's API
+            // if let context = extensionContext {
+            //     context.didOpenTab(extensionTab)
+
+            //     guard let realAction = context.action(for: nil) else {
+            //         print("❌ No action available in context for testing. Ensure extension has 'action' or 'browser_action' in manifest.json")
+            //         return
+            //     }
+
+            //     print("🧪 Simulating action update with real action: \(realAction.label ?? "Unknown")")
+
+            //     // Manually call the delegate method (for testing only)
+            //     // This will invoke your implementation and log the update
+            //     self.webExtensionController(controller, didUpdate: realAction, forExtensionContext: context)
+
+            //     print("✅ Notified extension context \(context.uniqueIdentifier) about new tab \(id)")
+            // } else {
+            //     print("⚠️ Extension context is nil - cannot register tab or notify extensions")
+            // }
         }
+
+        let hasURLAccess = extensionContext?.hasAccess(to: URL(string: "https://google.com")!) ?? false
+        print("Has URL access: \(hasURLAccess)")
+       
+        
+        print("📋 Extension tab created and WebView configured for discovery")
+                
+        // print("\n--- Status for Context: \(extensionContext?.uniqueIdentifier) ---")
+        // extensionContext?.printStatusInfo()
     }
     
     /// Unregister a WebView when it's disposed
-    public static func unregisterWebView(id: String) {
+    public func unregisterWebView(id: String) {
         print("🗑️ Unregistering WebView: \(id)")
         activeWebViews.removeAll { $0.id == id }
-
-        // Also remove extension tab
-        if #available(macOS 15.4, *) {
-            if let extensionTab = extensionTabs.removeValue(forKey: id) {
-                // Notify extension contexts about the closed tab using WebKit's API
-                for context in sharedExtensionContexts {
-                    context.didCloseTab(extensionTab, windowIsClosing: false)
-                    print("✅ Notified extension context \(context.uniqueIdentifier) about closed tab \(id)")
-                }
-                print("📋 Extension tab removed and contexts notified")
-            }
-        }
 
         print("✅ WebView unregistered. Total active tabs: \(activeWebViews.count)")
     }
@@ -495,7 +370,7 @@ public class ExtensionManager: NSObject, ObservableObject, WKWebExtensionControl
     public static func prepareExtensionSystem() async -> Bool {
         print("🚀 Preparing extension system...")
         
-        guard !isPrepared else {
+        guard !isGloballyPrepared else {
             print("✅ Extension system already prepared")
             return true
         }
@@ -513,8 +388,8 @@ public class ExtensionManager: NSObject, ObservableObject, WKWebExtensionControl
             }
             
             // Create shared controller
-            sharedExtensionController = WKWebExtensionController(configuration: config)
-            sharedExtensionContexts = []
+            globalExtensionController = WKWebExtensionController(configuration: config)
+            globalExtensionContexts = []
             
             // Try to load from bundled resources first
             var extensionsLoaded = 0
@@ -544,29 +419,29 @@ public class ExtensionManager: NSObject, ObservableObject, WKWebExtensionControl
                     // Read contents (use .skipsHiddenFiles if you want to ignore hidden files)
                     let contents = try FileManager.default.contentsOfDirectory(at: extensionsURL, includingPropertiesForKeys: nil, options: [.skipsHiddenFiles])
                     print("🔍 Found \(contents.count) items in Extensions directory:")
-                        for item in contents {
-                            print("   - \(item.lastPathComponent)")
-                        }
-                        let zipFiles = contents.filter { $0.pathExtension.lowercased() == "zip" }
-                        
-                        for zipFile in zipFiles {
+                    for item in contents {
+                        print("   - \(item.lastPathComponent)")
+                    }
+                    let zipFiles = contents.filter { $0.pathExtension.lowercased() == "zip" }
+                    
+                    for zipFile in zipFiles {
                         print("📦 Found extension: \(zipFile.lastPathComponent)")
-                            do {
-                                let context = try await installBundledExtension(from: zipFile)
-                                sharedExtensionContexts.append(context)
-                                extensionsLoaded += 1
+                        do {
+                            let context = try await installBundledExtension(from: zipFile)
+                            globalExtensionContexts.append(context)
+                            extensionsLoaded += 1
                             print("✅ Extension '\(zipFile.lastPathComponent)' loaded and ready")
-                            } catch {
+                        } catch {
                             print("⚠️ Failed to load extension '\(zipFile.lastPathComponent)': \(error)")
-                                continue
-                            }
+                            continue
                         }
-                        
-                        if zipFiles.isEmpty {
+                    }
+                    
+                    if zipFiles.isEmpty {
                         print("📦 No ZIP extensions found in \(extensionsURL.path)")
                         print("💡 Tip: Place your ZIP extension files in ~/Documents/Extensions/ to load them.")
-                        }
-                    } catch {
+                    }
+                } catch {
                     // More detailed error logging
                     let nsError = error as NSError
                     print("📦 Could not read Extensions directory \(extensionsURL.path):")
@@ -590,7 +465,7 @@ public class ExtensionManager: NSObject, ObservableObject, WKWebExtensionControl
             // }
             
             if extensionsLoaded > 0 {
-                isPrepared = true
+                isGloballyPrepared = true
                 print("🎉 Extension system preparation complete! Loaded \(extensionsLoaded) extension(s)")
                 return true
             } else {
@@ -608,7 +483,7 @@ public class ExtensionManager: NSObject, ObservableObject, WKWebExtensionControl
     @MainActor
     private static func grantPermissionsToContext(_ context: WKWebExtensionContext, webExtension: WKWebExtension) async {
         // Grant common permissions
-        for permission in commonPermissions {
+        for permission in Self.commonPermissions {
             context.setPermissionStatus(.grantedExplicitly, for: permission)
         }
         
@@ -638,7 +513,7 @@ public class ExtensionManager: NSObject, ObservableObject, WKWebExtensionControl
         }
         
         // Log information about all loaded extensions
-        for (index, context) in Self.sharedExtensionContexts.enumerated() {
+        for (index, context) in globalExtensionContexts.enumerated() {
             print("Extension \(index + 1): \(context.webExtension.displayName ?? "Unknown")")
             print("  ID: \(context.uniqueIdentifier)")
             print("  Options URL: \(context.optionsPageURL?.absoluteString ?? "None")")
@@ -649,7 +524,7 @@ public class ExtensionManager: NSObject, ObservableObject, WKWebExtensionControl
     /// Private helper to install bundled extensions with proper structure
     @MainActor
     private static func installBundledExtension(from url: URL) async throws -> WKWebExtensionContext {
-        let extensionsDir = getExtensionsDirectory()
+        let extensionsDir = Self.getExtensionsDirectory()
         try FileManager.default.createDirectory(at: extensionsDir, withIntermediateDirectories: true)
         
         // Create extension-specific directory based on the ZIP file name
@@ -665,7 +540,7 @@ public class ExtensionManager: NSObject, ObservableObject, WKWebExtensionControl
         print("📦 Installing bundled extension '\(zipFileName)' to: \(extensionDir.path)")
         
         // Extract with proper structure
-        try extractZipWithProperStructure(from: url, to: extensionDir, extensionName: zipFileName)
+        try Self.extractZipWithProperStructure(from: url, to: extensionDir, extensionName: zipFileName)
         
         // Validate manifest exists and is valid
         let manifestURL = extensionDir.appendingPathComponent("manifest.json")
@@ -675,12 +550,12 @@ public class ExtensionManager: NSObject, ObservableObject, WKWebExtensionControl
         // Load extension
         let webExtension = try await WKWebExtension(resourceBaseURL: extensionDir)
         let extensionContext = WKWebExtensionContext(for: webExtension)
-        
+
         // Grant permissions
         await grantPermissionsToContext(extensionContext, webExtension: webExtension)
-        
+
         // Load into shared controller
-        try sharedExtensionController?.load(extensionContext)
+        // try globalExtensionController?.load(extensionContext)
         
         print("🎉 Bundled extension '\(zipFileName)' successfully installed and configured")
         return extensionContext
@@ -689,7 +564,7 @@ public class ExtensionManager: NSObject, ObservableObject, WKWebExtensionControl
     /// Private helper to install extension from URL
     @MainActor
     private static func installExtension(from url: URL) async throws {
-        let extensionsDir = getExtensionsDirectory()
+        let extensionsDir = Self.getExtensionsDirectory()
         try FileManager.default.createDirectory(at: extensionsDir, withIntermediateDirectories: true)
         
         // Create unique directory name based on ZIP file name + UUID
@@ -709,26 +584,26 @@ public class ExtensionManager: NSObject, ObservableObject, WKWebExtensionControl
             // Use local file directly
             sourceURL = url
         }
-        
-        try extractZipWithProperStructure(from: sourceURL, to: destinationDir, extensionName: zipFileName)
-        
+
+        try Self.extractZipWithProperStructure(from: sourceURL, to: destinationDir, extensionName: zipFileName)
+
         // Validate manifest
         let manifestURL = destinationDir.appendingPathComponent("manifest.json")
         _ = try ExtensionUtils.validateManifest(at: manifestURL)
-        
+
         // Load extension
         let webExtension = try await WKWebExtension(resourceBaseURL: destinationDir)
         let extensionContext = WKWebExtensionContext(for: webExtension)
-        sharedExtensionContexts = [extensionContext] // Replace existing for backwards compatibility
-        
+        globalExtensionContexts = [extensionContext] // Replace existing for backwards compatibility
+
         // Grant permissions
-        await grantPermissionsToContext(extensionContext, webExtension: webExtension)
+        await Self.grantPermissionsToContext(extensionContext, webExtension: webExtension)
     }
     
     /// Private helper to install extension from URL with return value
     @MainActor
     private static func installExtensionWithReturn(from url: URL) async throws -> WKWebExtensionContext {
-        let extensionsDir = getExtensionsDirectory()
+        let extensionsDir = Self.getExtensionsDirectory()
         try FileManager.default.createDirectory(at: extensionsDir, withIntermediateDirectories: true)
         
         // Create unique directory name based on ZIP file name + UUID
@@ -749,21 +624,21 @@ public class ExtensionManager: NSObject, ObservableObject, WKWebExtensionControl
             sourceURL = url
         }
         
-        try extractZipWithProperStructure(from: sourceURL, to: destinationDir, extensionName: zipFileName)
-        
+        try Self.extractZipWithProperStructure(from: sourceURL, to: destinationDir, extensionName: zipFileName)
+
         // Validate manifest
         let manifestURL = destinationDir.appendingPathComponent("manifest.json")
         _ = try ExtensionUtils.validateManifest(at: manifestURL)
-        
+
         // Load extension
         let webExtension = try await WKWebExtension(resourceBaseURL: destinationDir)
         let extensionContext = WKWebExtensionContext(for: webExtension)
-        
+
         // Grant permissions
         await grantPermissionsToContext(extensionContext, webExtension: webExtension)
-        
+
         // Load into shared controller
-        try sharedExtensionController?.load(extensionContext)
+        // try globalExtensionController?.load(extensionContext)
         
         return extensionContext
     }
@@ -778,28 +653,29 @@ public class ExtensionManager: NSObject, ObservableObject, WKWebExtensionControl
                 print("dismiss popup")
         }
 
-        // Use pre-prepared shared components if available
-        if Self.isPrepared,
-           let sharedController = Self.sharedExtensionController,
-           !Self.sharedExtensionContexts.isEmpty {
-            
-            print("🔌 Using pre-prepared extension components (\(Self.sharedExtensionContexts.count) extension(s))")
-            extensionController = sharedController
+        // Use globally prepared extension components if available
+        if Self.isGloballyPrepared,
+           let globalController = Self.globalExtensionController,
+           !Self.globalExtensionContexts.isEmpty {
+
+            print("🔌 Using globally prepared extension components (\(Self.globalExtensionContexts.count) extension(s))")
+            extensionController = globalController
             // Use the first extension context for backwards compatibility
-            extensionContext = Self.sharedExtensionContexts.first
+            extensionContext = Self.globalExtensionContexts.first
+            isPrepared = true
             isInitialized = true
             
             // Set delegate for this instance
             if #available(macOS 15.4, *) {
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                    sharedController.delegate = self
+                    globalController.delegate = self
                 }
             } else {
-                sharedController.delegate = self
+                globalController.delegate = self
             }
         } else {
             print("⚠️ Extension system not prepared! Call prepareExtensionSystem() first")
-            
+
             // Fallback: create basic controller (but it won't have extensions loaded)
             let config: WKWebExtensionController.Configuration
             if let idString = UserDefaults.standard.string(forKey: "Pola.WKWebExtensionController.Identifier"),
@@ -810,33 +686,32 @@ public class ExtensionManager: NSObject, ObservableObject, WKWebExtensionControl
                 UserDefaults.standard.set(uuid.uuidString, forKey: "Pola.WKWebExtensionController.Identifier")
                 config = WKWebExtensionController.Configuration(identifier: uuid)
             }
-            
+
             extensionController = WKWebExtensionController(configuration: config)
-            
-            if #available(macOS 15.4, *) {
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                    self.extensionController?.delegate = self
-                }
-            } else {
-                extensionController?.delegate = self
-            }
+
+            // Don't try to load extensions that aren't prepared yet
+            print("🔄 Extension controller created but no extensions loaded yet")
+            return
         }
         
         
         
         // Load into controller
-        try? extensionController?.load(extensionContext!)
-        
-        if extensionContext!.isLoaded {
-            print("📋 Extension loaded and active")
-            print("✅ Extension rules should now be active")
-            
+        if let context = extensionContext {
+            try? extensionController?.load(context)
+
+            if context.isLoaded {
+                print("📋 Extension loaded and active")
+                print("✅ Extension rules should now be active")
+            }
+
+            print(context.webExtension.displayName ?? "Unknown")
+            print(context.uniqueIdentifier)
+            print(context.optionsPageURL?.absoluteString ?? "None")
+            print(context.isLoaded)
+        } else {
+            print("⚠️ No extension context available - extension system may not be prepared")
         }
-        
-        print(extensionContext!.webExtension.displayName)
-        print(extensionContext!.uniqueIdentifier)
-        print(extensionContext!.optionsPageURL)
-        print(extensionContext!.isLoaded)
     }
     
     /// Initialize the extension manager with a completion callback
@@ -848,9 +723,18 @@ public class ExtensionManager: NSObject, ObservableObject, WKWebExtensionControl
             return
         }
         
-        if Self.isPrepared {
-            print("Extension system was pre-prepared but not attached to this instance")
-            completion(false)
+        if Self.isGloballyPrepared {
+            print("Extension system was globally prepared but not attached to this instance")
+            // Try to attach global state to this instance
+            if let globalController = Self.globalExtensionController {
+                extensionController = globalController
+                extensionContext = Self.globalExtensionContexts.first
+                isPrepared = true
+                isInitialized = true
+                completion(true)
+            } else {
+                completion(false)
+            }
         } else {
             print("Extension system not prepared - call prepareExtensionSystem() first")
             completion(false)
@@ -881,19 +765,28 @@ public class ExtensionManager: NSObject, ObservableObject, WKWebExtensionControl
     
     /// Get all loaded extension contexts
     public var allExtensionContexts: [WKWebExtensionContext] {
-        return Self.sharedExtensionContexts
+        return Self.globalExtensionContexts
     }
     
     /// Get all installed extensions info for Flutter
-    public static func getAllInstalledExtensions() -> [[String: Any]] {
-        return sharedExtensionContexts.map { context in
+    public func getAllInstalledExtensions() -> [[String: Any]] {
+        return Self.globalExtensionContexts.map { context in
+            let id = context.uniqueIdentifier
+            let name = context.webExtension.displayName ?? "Unknown"
+            let version = context.webExtension.version ?? "Unknown"
+            let isLoaded = context.isLoaded
+            let hasCommands = context.webExtension.hasCommands
+            let hasOptionsPage = context.webExtension.hasOptionsPage
+            let hasPopup = hasCommands || hasOptionsPage
+            let description = context.webExtension.displayVersion ?? ""
+
             return [
-                "id": context.uniqueIdentifier,
-                "name": context.webExtension.displayName ?? "Unknown",
-                "version": context.webExtension.version ?? "Unknown",
-                "isLoaded": context.isLoaded,
-                "hasPopup": context.webExtension.hasCommands || context.webExtension.hasOptionsPage,
-                "description": context.webExtension.displayVersion ?? ""
+                "id": id,
+                "name": name,
+                "version": version,
+                "isLoaded": isLoaded,
+                "hasPopup": hasPopup,
+                "description": description
             ]
         }
     }
@@ -901,7 +794,7 @@ public class ExtensionManager: NSObject, ObservableObject, WKWebExtensionControl
     
     /// Get extension info for debugging
     public var extensionInfo: [String] {
-        return Self.sharedExtensionContexts.map { context in
+        return Self.globalExtensionContexts.map { context in
             let name = context.webExtension.displayName ?? "Unknown"
             let version = context.webExtension.version ?? "Unknown"
             let loaded = context.isLoaded ? "✅" : "❌"
@@ -917,20 +810,20 @@ public class ExtensionManager: NSObject, ObservableObject, WKWebExtensionControl
         - Primary Extension Context Loaded: \(extensionContext?.isLoaded ?? false)
         - Extension Controller: \(extensionController != nil ? "Available" : "Not Available")
         - Extension Count: \(extensionController?.extensions.count ?? 0)
-        - Context Count: \(Self.sharedExtensionContexts.count)
+        - Context Count: \(Self.globalExtensionContexts.count)
         - Ready: \(isReady)
-        
+
         Loaded Extensions:
         """
-        
-        for (index, context) in Self.sharedExtensionContexts.enumerated() {
+
+        for (index, context) in Self.globalExtensionContexts.enumerated() {
             let name = context.webExtension.displayName ?? "Unknown"
             let version = context.webExtension.version ?? "Unknown"
             let loaded = context.isLoaded ? "✅" : "❌"
             info += "\n  \(index + 1). \(loaded) \(name) v\(version)"
         }
         
-        if Self.sharedExtensionContexts.isEmpty {
+        if Self.globalExtensionContexts.isEmpty {
             info += "\n  (No extensions loaded)"
         }
         
@@ -1063,7 +956,7 @@ public class ExtensionManager: NSObject, ObservableObject, WKWebExtensionControl
     
     @MainActor
     public func performInstallation(from sourceURL: URL) async throws {
-        let extensionsDir = ExtensionManager.getExtensionsDirectory()
+        let extensionsDir = Self.getExtensionsDirectory()
         try FileManager.default.createDirectory(at: extensionsDir, withIntermediateDirectories: true)
         
         let extensionId = ExtensionUtils.generateExtensionId()
@@ -1083,7 +976,7 @@ public class ExtensionManager: NSObject, ObservableObject, WKWebExtensionControl
         // Handle ZIP files and directories
         let extensionName = sourceURL.deletingPathExtension().lastPathComponent
         if sourceURL.pathExtension.lowercased() == "zip" {
-            try ExtensionManager.extractZipWithProperStructure(from: localSourceURL, to: destinationDir, extensionName: extensionName)
+            try Self.extractZipWithProperStructure(from: localSourceURL, to: destinationDir, extensionName: extensionName)
         } else {
             try FileManager.default.copyItem(at: localSourceURL, to: destinationDir)
         }
@@ -1109,7 +1002,7 @@ public class ExtensionManager: NSObject, ObservableObject, WKWebExtensionControl
         print("   Requested match patterns: \(webExtension.requestedPermissionMatchPatterns)")
         
         // Pre-grant common permissions for extensions that need them (like Dark Reader)
-        for permission in ExtensionManager.commonPermissions {
+        for permission in Self.commonPermissions {
             self.extensionContext?.setPermissionStatus(.grantedExplicitly, for: permission)
         }
         
@@ -1287,6 +1180,7 @@ public class ExtensionManager: NSObject, ObservableObject, WKWebExtensionControl
         print("   Extension name: \(context.webExtension.displayName ?? "Unknown")")
         print("   Action label: \(action.label ?? "No label")")
         print("   Action icon: \(action.icon != nil ? "Has icon" : "No icon")")
+        action.printActionInfo()
     }
     
     public func webExtensionController(_ webExtensionController: WKWebExtensionController,
@@ -1628,5 +1522,155 @@ struct ExtensionUtils {
     /// Generate a unique extension identifier
     static func generateExtensionId() -> String {
         return UUID().uuidString.lowercased()
+    }
+}
+
+
+extension WKWebExtensionContext {
+    
+    /// Prints a comprehensive status report of the web extension context, including all major fields and properties.
+    /// This is useful for debugging and monitoring the state of the extension context.
+    @available(macOS 15.4, *)
+    public func printStatusInfo() {
+        print("=== WKWebExtensionContext Status Report ===")
+        print("Web Extension: \(webExtension.displayName ?? "Unnamed")")
+        print("Loaded: \(isLoaded ? "Yes" : "No")")
+        print("Controller: \(webExtensionController != nil ? "Attached" : "Not attached")")
+        print("\nBase URL: \(baseURL.absoluteString)")
+        print("Unique Identifier: \(uniqueIdentifier)")
+        print("Inspectable: \(isInspectable ? "Yes" : "No")")
+        print("Inspection Name: \(inspectionName ?? "N/A")")
+        print("Unsupported APIs: \(unsupportedAPIs.isEmpty ? "None" : unsupportedAPIs.joined(separator: ", "))")
+        print("Options Page URL: \(optionsPageURL?.absoluteString ?? "N/A")")
+        print("Override New Tab Page URL: \(overrideNewTabPageURL?.absoluteString ?? "N/A")")
+        print("\nPermissions:")
+        print("  Current Granted Permissions: \(currentPermissions.isEmpty ? "None" : currentPermissions.map { "\($0.rawValue)" }.joined(separator: ", "))")
+        print("  Current Granted Match Patterns: \(currentPermissionMatchPatterns.isEmpty ? "None" : currentPermissionMatchPatterns.map { "\($0)" }.joined(separator: ", "))")
+        print("  Has Access to All URLs: \(hasAccessToAllURLs ? "Yes" : "No")")
+        print("  Has Access to All Hosts: \(hasAccessToAllHosts ? "Yes" : "No")")
+        print("  Requested Optional Access to All Hosts: \(hasRequestedOptionalAccessToAllHosts ? "Yes" : "No")")
+        print("  Access to Private Data: \(hasAccessToPrivateData ? "Yes" : "No")")
+        print("  Has Injected Content: \(hasInjectedContent ? "Yes" : "No")")
+        print("  Has Content Modification Rules: \(hasContentModificationRules ? "Yes" : "No")")
+        
+        // Granted and Denied with expiration info
+        if !grantedPermissions.isEmpty {
+            print("  Granted Permissions (with expirations):")
+            for (permission, date) in grantedPermissions {
+                let exp = date.timeIntervalSinceNow > 0 ? date.description : "Expired"
+                print("    \(permission.rawValue): \(exp)")
+            }
+        } else {
+            print("  Granted Permissions: None")
+        }
+        
+        if !deniedPermissions.isEmpty {
+            print("  Denied Permissions (with expirations):")
+            for (permission, date) in deniedPermissions {
+                let exp = date.timeIntervalSinceNow > 0 ? date.description : "Expired"
+                print("    \(permission.rawValue): \(exp)")
+            }
+        } else {
+            print("  Denied Permissions: None")
+        }
+        
+        if !grantedPermissionMatchPatterns.isEmpty {
+            print("  Granted Match Patterns (with expirations):")
+            for (pattern, date) in grantedPermissionMatchPatterns {
+                let exp = date.timeIntervalSinceNow > 0 ? date.description : "Expired"
+                print("    \(pattern): \(exp)")
+            }
+        } else {
+            print("  Granted Match Patterns: None")
+        }
+        
+        if !deniedPermissionMatchPatterns.isEmpty {
+            print("  Denied Match Patterns (with expirations):")
+            for (pattern, date) in deniedPermissionMatchPatterns {
+                let exp = date.timeIntervalSinceNow > 0 ? date.description : "Expired"
+                print("    \(pattern): \(exp)")
+            }
+        } else {
+            print("  Denied Match Patterns: None")
+        }
+        
+        print("\nErrors: \(errors.isEmpty ? "None" : "\(errors.count) error(s)")")
+        if !errors.isEmpty {
+            for error in errors {
+                print("  Error: \(error.localizedDescription)")
+            }
+        }
+        
+        print("\nWindows and Tabs:")
+        print("  Open Windows: \(openWindows.count)")
+
+        print("  Focused Window: \(focusedWindow?.description ?? "nd")")
+        print("  Open Tabs: \(openTabs.count)")
+        
+        print("Commands: \(commands.isEmpty ? "None" : "\(commands.count) command(s)")")
+        for command in commands {
+            print("  Command: \(command.title) (Suggested Key: \(command.activationKey ?? "N/A"))")
+        }
+        
+        print("=====================================")
+    }
+}
+
+
+extension WKWebExtension.Action {
+    
+    /**
+     Prints a comprehensive status report of the WKWebExtension.Action instance,
+     including all major fields and properties. This is useful for debugging and
+     monitoring the state of the extension action (e.g., in delegates or after registration).
+     
+     - Parameter title: An optional descriptive title to prefix the output (e.g., "After Registration").
+     */
+    @available(macOS 15.4, *)
+    @MainActor
+    public func printActionInfo(title: String? = nil) {
+        print("=== WKWebExtension.Action Status Report \(title != nil ? "- \(title!)" : "") ===")
+        
+        // Basic association details
+        print("Associated Context: \(webExtensionContext?.uniqueIdentifier ?? "None")")
+        print("Associated Tab: \(associatedTab?.description ?? "None (default action)")")
+        
+        // Icon info (call with a standard small size for demo; adjust as needed)
+        let sampleIconSize = CGSize(width: 16, height: 16)
+        let sampleIcon = self.icon(for: sampleIconSize)
+        if let icon = sampleIcon {
+            print("Icon (for \(sampleIconSize)): Available (Size: \(icon.size))")
+        } else {
+            print("Icon (for \(sampleIconSize)): Not available (nil)")
+        }
+        
+        // Core UI properties
+        print("Label: \(label)")
+        print("Badge Text: '\(badgeText)' \(badgeText.isEmpty ? "(No badge)" : "(Visible)")")
+        print("Has Unread Badge Text: \(hasUnreadBadgeText)")
+        print("Inspection Name: \(inspectionName ?? "N/A")")
+        print("Is Enabled: \(isEnabled)")
+        
+        // Menu items
+        print("Menu Items: \(menuItems.count) item(s)")
+        if !menuItems.isEmpty {
+            for (index, item) in menuItems.enumerated() {
+                print("  \(index + 1). '\(item.title)' (Enabled: \(item.isEnabled), Has Submenu: \(item.hasSubmenu ? "Yes" : "No"))")
+            }
+        }
+        
+        // Popup-related properties
+        print("Presents Popup: \(presentsPopup)")
+        if presentsPopup {
+            print("  Popup WebView: \(popupWebView != nil ? "Available (\(popupWebView!.url?.absoluteString ?? "URL N/A"))" : "Not ready (nil)")")
+            print("  Popup Popover: \(popupPopover != nil ? "Available" : "Not ready (nil)")")
+        } else {
+            print("  No popup configured - ignore popup properties")
+        }
+        
+        // Lifecycle note (don't call closePopup here to avoid side effects)
+        print("Close Popup Available: Yes (call `closePopup()` manually if needed for cleanup)")
+        
+        print("=====================================")
     }
 }

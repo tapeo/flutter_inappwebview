@@ -70,7 +70,7 @@ public class InAppWebView: WKWebView, WKUIDelegate,
 
         if let extensionController = self.extensionManager.extensionController {
             print("Attaching extension controller to initial WebView configuration")
-            cc.webExtensionController = self.extensionManager.extensionController
+            cc.webExtensionController = extensionController
             // Ensure JavaScript is enabled for extensions
             cc.preferences.javaScriptEnabled = true
             cc.defaultWebpagePreferences.allowsContentJavaScript = true
@@ -98,7 +98,8 @@ public class InAppWebView: WKWebView, WKUIDelegate,
 
         // Register this WebView as an active tab for extensions
         if let webViewId = id {
-            ExtensionManager.registerWebView(self, id: String(describing: webViewId))
+            self.extensionManager.extensionController?.delegate = self.extensionManager
+            self.extensionManager.registerWebView(self, id: String(describing: webViewId))
         }
     }
     
@@ -230,6 +231,14 @@ public class InAppWebView: WKWebView, WKUIDelegate,
                 configuration.preferences.shouldPrintBackgrounds = settings.shouldPrintBackgrounds
             }
         }
+        
+        if let extensionController = self.extensionManager.extensionController {
+            print("Attaching extension controller to initial WebView configuration")
+            configuration.webExtensionController = extensionController
+            // Ensure JavaScript is enabled for extensions
+            configuration.preferences.javaScriptEnabled = true
+            configuration.defaultWebpagePreferences.allowsContentJavaScript = true
+        }
     }
     
     public func prepareAndAddUserScripts() -> Void {
@@ -291,11 +300,9 @@ public class InAppWebView: WKWebView, WKUIDelegate,
         configuration.userContentController.sync(scriptMessageHandler: self)
     }
     
-    public static func preWKWebViewConfiguration(settings: InAppWebViewSettings?) -> WKWebViewConfiguration {
-        let configuration = WKWebViewConfiguration()
+    public static func preWKWebViewConfiguration(settings: InAppWebViewSettings?, configuration: WKWebViewConfiguration) -> WKWebViewConfiguration {
         // initialzie WKUserContentController here to fix possible "undefined is not an object (evaluating 'window.webkit.messageHandlers')" javascript error
         configuration.userContentController = WKUserContentController()
-        configuration.processPool = WKProcessPoolManager.sharedProcessPool
         
         if let settings = settings {
             configuration.suppressesIncrementalRendering = settings.suppressesIncrementalRendering
@@ -852,22 +859,22 @@ public class InAppWebView: WKWebView, WKUIDelegate,
             }
         }
         
-        if #available(macOS 10.13, *), newSettingsMap["contentBlockers"] != nil {
-            configuration.userContentController.removeAllContentRuleLists()
-            let contentBlockers = newSettings.contentBlockers
-            if contentBlockers.count > 0 {
-                ContentBlockerManager.shared.getOrCompileRuleList(contentBlockers: contentBlockers) { (contentRuleList, error) in
-                    if let error = error {
-                        print("ContentBlocker compilation error: \(error.localizedDescription)")
-                        return
-                    }
+        // if #available(macOS 10.13, *), newSettingsMap["contentBlockers"] != nil {
+        //     configuration.userContentController.removeAllContentRuleLists()
+        //     let contentBlockers = newSettings.contentBlockers
+        //     if contentBlockers.count > 0 {
+        //         ContentBlockerManager.shared.getOrCompileRuleList(contentBlockers: contentBlockers) { (contentRuleList, error) in
+        //             if let error = error {
+        //                 print("ContentBlocker compilation error: \(error.localizedDescription)")
+        //                 return
+        //             }
                     
-                    if let contentRuleList = contentRuleList {
-                        self.configuration.userContentController.add(contentRuleList)
-                    }
-                }
-            }
-        }
+        //             if let contentRuleList = contentRuleList {
+        //                 self.configuration.userContentController.add(contentRuleList)
+        //             }
+        //         }
+        //     }
+        // }
         
         if #available(macOS 11.3, *) {
             if newSettingsMap["upgradeKnownHostsToHTTPS"] != nil && settings?.upgradeKnownHostsToHTTPS != newSettings.upgradeKnownHostsToHTTPS {
@@ -2877,7 +2884,7 @@ if(window.\(JavaScriptBridgeJS.get_JAVASCRIPT_BRIDGE_NAME())[\(_callHandlerID)] 
     public func dispose() {
         // Unregister this WebView from extension system
         if let webViewId = id {
-            ExtensionManager.unregisterWebView(id: String(describing: webViewId))
+            self.extensionManager.unregisterWebView(id: String(describing: webViewId))
         }
 
         channelDelegate?.dispose()
