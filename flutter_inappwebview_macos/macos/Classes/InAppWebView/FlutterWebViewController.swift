@@ -10,10 +10,8 @@ import WebKit
 import FlutterMacOS
 
 public class FlutterWebViewController: NSView, Disposable {
-    
-    var keepAliveId: String?
 
-    let extensionManager = ExtensionManager()
+    var keepAliveId: String?
 
     init(plugin: InAppWebViewFlutterPlugin, withFrame frame: CGRect, viewIdentifier viewId: Any, params: NSDictionary) {
         super.init(frame: frame)

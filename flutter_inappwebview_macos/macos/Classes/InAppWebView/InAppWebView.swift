@@ -68,28 +68,15 @@ public class InAppWebView: WKWebView, WKUIDelegate,
 
     // Track first real navigation (not about:blank)
     private var isFirstRealNavigation = true
-    private var hasRetriedFirstNavigation = false
-    private var pendingNavigationRequest: URLRequest?
 
 
     init(id: Any?, plugin: InAppWebViewFlutterPlugin?, frame: CGRect, cc: WKWebViewConfiguration,
          userScripts: [UserScript] = []) {
 
-        // Load extensions BEFORE creating WebView so rules are already compiled
-        extensionManager.installAndLoadExtensions()
-
-        if let extensionController = extensionManager.extensionController {
-            print("✅ Attaching extension controller with PRE-LOADED extensions")
-            cc.webExtensionController = extensionController
-            cc.preferences.javaScriptEnabled = true
-            cc.defaultWebpagePreferences.allowsContentJavaScript = true
-
-            // Wait for rules to be ready BEFORE creating WebView
-            if let context = extensionManager.extensionContext {
-                print("⏳ Waiting for rules to compile BEFORE creating WebView...")
-                extensionManager.waitForExtensionRulesSync()
-            }
-        }
+        // Attach extensions (if available) before initializing the WebView
+        extensionManager.applyExtensions(to: cc)
+        cc.preferences.javaScriptEnabled = true
+        cc.defaultWebpagePreferences.allowsContentJavaScript = true
 
         super.init(frame: frame, configuration: cc)
         self.id = id
@@ -102,13 +89,6 @@ public class InAppWebView: WKWebView, WKUIDelegate,
         self.initialUserScripts = userScripts
         uiDelegate = self
         navigationDelegate = self
-
-        // Extension should already be ready if prepareExtensionSystem() was called
-        if let extensionManager = self.extensionManager.extensionController, self.extensionManager.isReady {
-            print("✅ Extension ready for WebView")
-        } else {
-            print("⚠️ Extension not ready - ensure prepareExtensionSystem() was called at app startup")
-        }
 
         // Register this WebView as an active tab for extensions
         if let webViewId = id {
@@ -247,16 +227,11 @@ public class InAppWebView: WKWebView, WKUIDelegate,
 
         // Extension controller should already be attached during init
         // No need to reattach or reinstall extensions here
-        if configuration.webExtensionController == nil {
-            print("⚠️ Extension controller not set in prepare() - this shouldn't happen")
-            if let extensionController = self.extensionManager.extensionController {
-                print("🔧 Attaching extension controller in prepare() as fallback")
-                configuration.webExtensionController = extensionController
-                configuration.preferences.javaScriptEnabled = true
-                configuration.defaultWebpagePreferences.allowsContentJavaScript = true
-            }
-        } else {
-            print("✅ Extension controller already configured from init")
+        if configuration.webExtensionController == nil,
+           let extensionController = extensionManager.extensionController {
+            configuration.webExtensionController = extensionController
+            configuration.preferences.javaScriptEnabled = true
+            configuration.defaultWebpagePreferences.allowsContentJavaScript = true
         }
     }
     
@@ -601,40 +576,11 @@ public class InAppWebView: WKWebView, WKUIDelegate,
     
     public func loadUrl(urlRequest: URLRequest, allowingReadAccessTo: URL?) {
         let url = urlRequest.url!
+        extensionManager.markWebViewActive(self)
 
-        // Debug: Check WebView extension state before navigation
-        print("🔍 [loadUrl] About to navigate to: \(url)")
-        print("   📊 WebView extension state:")
-        print("      - has webExtensionController: \(configuration.webExtensionController != nil)")
-        if let controller = configuration.webExtensionController {
-            print("      - controller.extensions.count: \(controller.extensions.count)")
-            print("      - controller.extensionContexts.count: \(controller.extensionContexts.count)")
-            if let firstContext = controller.extensionContexts.first {
-                print("      - first context.isLoaded: \(firstContext.isLoaded)")
-                print("      - first context has DNR permission: \(firstContext.currentPermissions.contains(.declarativeNetRequest))")
-            }
-        }
-
-        // CRITICAL: Verify extensions are fully loaded before first navigation
-        if isFirstRealNavigation && configuration.webExtensionController != nil && url.scheme != "about" {
-            print("⚠️ First real navigation - verifying extension readiness...")
-
-            // Check if all extension contexts are loaded
-            if let controller = configuration.webExtensionController {
-                let allLoaded = controller.extensionContexts.allSatisfy { $0.isLoaded }
-
-                if !allLoaded {
-                    print("   ⏳ Extensions not fully loaded - waiting before navigation...")
-                    // Wait briefly for extensions to finish loading
-                    extensionManager.ensureAllExtensionsReady()
-                } else {
-                    print("   ✅ Extensions already loaded - proceeding with navigation")
-                }
-            }
-
+        if isFirstRealNavigation && url.scheme != "about" {
+            extensionManager.ensureAllExtensionsReady()
             isFirstRealNavigation = false
-            pendingNavigationRequest = urlRequest
-            print("📌 Stored first navigation request for automatic retry if needed")
         }
 
         if let allowingReadAccessTo = allowingReadAccessTo, url.scheme == "file", allowingReadAccessTo.scheme == "file" {
@@ -1671,22 +1617,6 @@ public class InAppWebView: WKWebView, WKUIDelegate,
 
         InAppWebView.credentialsProposed = []
         evaluateJavaScript(JavaScriptBridgeJS.PLATFORM_READY_JS_SOURCE, completionHandler: nil)
-
-        // Auto-retry first navigation to ensure extension rules are active
-        if !hasRetriedFirstNavigation, let request = pendingNavigationRequest, configuration.webExtensionController != nil {
-            hasRetriedFirstNavigation = true
-            pendingNavigationRequest = nil
-
-            print("🔄 Auto-retrying first navigation to ensure extension rules are active...")
-            print("   💡 First load may not have blocked ads due to rule compilation timing")
-            print("   💡 This retry ensures rules are active and ads are blocked")
-
-            // Small delay to ensure WebKit is ready for the reload
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
-                self?.load(request)
-            }
-            return // Don't call the delegate callbacks yet
-        }
 
         channelDelegate?.onLoadStop(url: url?.absoluteString)
 
