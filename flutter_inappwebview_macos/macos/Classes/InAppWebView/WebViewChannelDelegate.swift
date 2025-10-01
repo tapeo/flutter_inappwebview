@@ -696,12 +696,14 @@ public class WebViewChannelDelegate: ChannelDelegate {
         case .loadExtension:
             break
         case .openExtensionPopup:
-            if let webView = webView {
-                let extensionId = arguments!["extensionId"] as! String
+            guard let webView = webView else {
+                result(false)
+                break
+            }
+            let extensionId = arguments!["extensionId"] as! String
+            Task { @MainActor in
                 let success = webView.extensionManager.openExtensionPopup(for: extensionId)
                 result(success)
-            } else {
-                result(false)
             }
             break
         }

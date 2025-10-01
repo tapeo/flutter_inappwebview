@@ -99,8 +99,10 @@ public class InAppWebViewManager: ChannelDelegate {
             case "loadExtension":
                 break
             case "getAllInstalledExtensions":
-                let extensions = ExtensionManager.shared.getAllInstalledExtensions()
-                result(extensions)
+                Task { @MainActor in
+                    let extensions = ExtensionManager.shared.getAllInstalledExtensions()
+                    result(extensions)
+                }
                 break
             default:
                 result(FlutterMethodNotImplemented)

@@ -100,6 +100,13 @@ public class InAppWebView: WKWebView, WKUIDelegate,
         super.init(coder: aDecoder)!
     }
 
+#if os(macOS)
+    public override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        extensionManager.updateWindow(for: self, window: window)
+    }
+#endif
+
     public func prepare() {
         addObserver(self,
                     forKeyPath: #keyPath(WKWebView.estimatedProgress),
@@ -390,10 +397,12 @@ public class InAppWebView: WKWebView, WKUIDelegate,
             let newUrl = change?[NSKeyValueChangeKey.newKey] as? URL
             channelDelegate?.onUpdateVisitedHistory(url: newUrl?.absoluteString, isReload: nil)
             inAppBrowserDelegate?.didUpdateVisitedHistory(url: newUrl)
+            extensionManager.commitNavigation(for: self, url: newUrl)
         } else if keyPath == #keyPath(WKWebView.title) && change?[.newKey] is String {
             let newTitle = change?[.newKey] as? String
             channelDelegate?.onTitleChanged(title: newTitle)
             inAppBrowserDelegate?.didChangeTitle(title: newTitle)
+            extensionManager.updateTitle(for: self, title: newTitle)
         }
         else if #available(macOS 12.0, *) {
             if keyPath == #keyPath(WKWebView.cameraCaptureState) || keyPath == #keyPath(WKWebView.microphoneCaptureState) {
@@ -576,12 +585,7 @@ public class InAppWebView: WKWebView, WKUIDelegate,
     
     public func loadUrl(urlRequest: URLRequest, allowingReadAccessTo: URL?) {
         let url = urlRequest.url!
-        extensionManager.markWebViewActive(self)
-
-        if isFirstRealNavigation && url.scheme != "about" {
-            extensionManager.ensureAllExtensionsReady()
-            isFirstRealNavigation = false
-        }
+        prepareExtensionsForNavigation(targetURL: url)
 
         if let allowingReadAccessTo = allowingReadAccessTo, url.scheme == "file", allowingReadAccessTo.scheme == "file" {
             loadFileURL(url, allowingReadAccessTo: allowingReadAccessTo)
@@ -596,10 +600,12 @@ public class InAppWebView: WKWebView, WKUIDelegate,
         request.addValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
         request.httpMethod = "POST"
         request.httpBody = postData
+        prepareExtensionsForNavigation(targetURL: url)
         load(request)
     }
     
     public func loadData(data: String, mimeType: String, encoding: String, baseUrl: URL, allowingReadAccessTo: URL?) {
+        prepareExtensionsForNavigation(targetURL: baseUrl, forceReadiness: true)
         if let allowingReadAccessTo = allowingReadAccessTo, baseUrl.scheme == "file", allowingReadAccessTo.scheme == "file" {
             loadFileURL(baseUrl, allowingReadAccessTo: allowingReadAccessTo)
         }
@@ -610,6 +616,29 @@ public class InAppWebView: WKWebView, WKUIDelegate,
         let assetURL = try Util.getUrlAsset(assetFilePath: assetFilePath)
         let urlRequest = URLRequest(url: assetURL)
         loadUrl(urlRequest: urlRequest, allowingReadAccessTo: nil)
+    }
+
+    private func prepareExtensionsForNavigation(targetURL: URL?, forceReadiness: Bool = false) {
+        extensionManager.markWebViewActive(self)
+        extensionManager.updatePendingNavigation(for: self, url: targetURL)
+        extensionManager.updateLoadingState(for: self, isLoading: true)
+
+        if isFirstRealNavigation {
+            if forceReadiness {
+                extensionManager.ensureAllExtensionsReady()
+                isFirstRealNavigation = false
+            } else if let targetURL {
+                if targetURL.scheme != "about" {
+                    extensionManager.ensureAllExtensionsReady()
+                    isFirstRealNavigation = false
+                }
+            } else {
+                extensionManager.ensureAllExtensionsReady()
+                isFirstRealNavigation = false
+            }
+        }
+
+        extensionManager.ensureTabAcknowledged(for: self)
     }
     
     func setSettings(newSettings: InAppWebViewSettings, newSettingsMap: [String: Any]) {
@@ -1522,6 +1551,11 @@ public class InAppWebView: WKWebView, WKUIDelegate,
         callback.error = { [weak callback] (code: String, message: String?, details: Any?) in
             callback?.defaultBehaviour(nil)
         }
+
+        if navigationAction.targetFrame?.isMainFrame ?? true {
+            let targetURL = navigationAction.request.mainDocumentURL ?? navigationAction.request.url
+            extensionManager.updatePendingNavigation(for: self, url: targetURL)
+        }
         
         let runCallback = {
             if let useShouldOverrideUrlLoading = self.settings?.useShouldOverrideUrlLoading, useShouldOverrideUrlLoading, let channelDelegate = self.channelDelegate {
@@ -1610,8 +1644,10 @@ public class InAppWebView: WKWebView, WKUIDelegate,
         channelDelegate?.onLoadStart(url: url?.absoluteString)
         
         inAppBrowserDelegate?.didStartNavigation(url: url)
+
+        extensionManager.updateLoadingState(for: self, isLoading: true)
     }
-    
+
     public func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
         initializeWindowIdJS()
 
@@ -1622,11 +1658,15 @@ public class InAppWebView: WKWebView, WKUIDelegate,
 
         inAppBrowserDelegate?.didFinishNavigation(url: url)
 
+        extensionManager.commitNavigation(for: self, url: self.url)
+        extensionManager.updateLoadingState(for: self, isLoading: false)
+
     }
-    
+
     public func webView(_ view: WKWebView,
                  didFailProvisionalNavigation navigation: WKNavigation!,
                  withError error: Error) {
+        extensionManager.updateLoadingState(for: self, isLoading: false)
         webView(view, didFail: navigation, withError: error)
     }
     
@@ -1658,6 +1698,8 @@ public class InAppWebView: WKWebView, WKUIDelegate,
         let webResourceError = WebResourceError(type: errorCode, errorDescription: errorDescription)
         
         channelDelegate?.onReceivedError(request: webResourceRequest, error: webResourceError)
+        extensionManager.commitNavigation(for: self, url: urlError)
+        extensionManager.updateLoadingState(for: self, isLoading: false)
         
         inAppBrowserDelegate?.didFailNavigation(url: url, error: error)
     }
@@ -2233,6 +2275,8 @@ public class InAppWebView: WKWebView, WKUIDelegate,
     public func webView(_ webView: WKWebView,
                         didCommit navigation: WKNavigation!) {
         channelDelegate?.onPageCommitVisible(url: url?.absoluteString)
+        extensionManager.commitNavigation(for: self, url: self.url)
+        extensionManager.updateLoadingState(for: self, isLoading: true)
     }
     
     public func webView(_ webView: WKWebView,

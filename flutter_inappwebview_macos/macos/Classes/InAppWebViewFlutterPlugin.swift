@@ -61,6 +61,12 @@ public class InAppWebViewFlutterPlugin: NSObject, FlutterPlugin {
             proxyManager = ProxyManager(plugin: self)
             profileManager = ProfileManager(plugin: self)
         }
+
+        if ExtensionUtils.isExtensionSupportAvailable {
+            Task { @MainActor in
+                ExtensionManager.shared.installAndLoadExtensions()
+            }
+        }
     }
     
     public static func register(with registrar: FlutterPluginRegistrar) {

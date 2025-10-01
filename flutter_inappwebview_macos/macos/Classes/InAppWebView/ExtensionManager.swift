@@ -5,10 +5,12 @@
 //  Created by Lorenzo on 21/10/18.
 //
 
+import AppKit
 import FlutterMacOS
 import Foundation
 @preconcurrency import WebKit
 
+@MainActor
 final class ExtensionManager: NSObject, ObservableObject, WKWebExtensionControllerDelegate {
     static let shared = ExtensionManager()
 
@@ -34,13 +36,28 @@ final class ExtensionManager: NSObject, ObservableObject, WKWebExtensionControll
     private var identifierForWebView = NSMapTable<WKWebView, NSString>(keyOptions: .weakMemory, valueOptions: .strongMemory)
     private weak var lastActiveWebView: WKWebView?
     private var tabs: [String: SimpleExtensionTab] = [:]
-    private let readinessTimeout: TimeInterval = 5.0
+    private let readinessTimeout: TimeInterval = 20.0
     private let readinessStep: TimeInterval = 0.05
+    private let tabReadinessTimeout: TimeInterval = 5.0
     private var preparingTask: Task<Bool, Never>?
+    private let extensionWindow: SimpleExtensionWindow?
+    private weak var lastActiveTabRef: SimpleExtensionTab?
+    private var pendingControllerActions: [() -> Void] = []
+    private var didNotifyWindowOpen = false
+    private var acknowledgedTabs: Set<String> = []
 
     var extensionController: WKWebExtensionController? { controller }
     var extensionContext: WKWebExtensionContext? { controller?.extensionContexts.first }
     var isReady: Bool { !contexts.isEmpty && contexts.allSatisfy { $0.isLoaded } }
+
+    override init() {
+        if #available(macOS 15.4, *) {
+            extensionWindow = SimpleExtensionWindow(identifier: "pola-main-window")
+        } else {
+            extensionWindow = nil
+        }
+        super.init()
+    }
 
     // MARK: Public API
 
@@ -49,16 +66,22 @@ final class ExtensionManager: NSObject, ObservableObject, WKWebExtensionControll
             ExtensionUtils.showUnsupportedOSAlert()
             return false
         }
-        return await shared.prepareIfNeeded()
+
+        let pendingTask = await MainActor.run { () -> Task<Bool, Never>? in
+            let manager = shared
+            manager.startPreparationIfNeeded()
+            return manager.preparingTask
+        }
+
+        if let pendingTask {
+            return await pendingTask.value
+        }
+
+        return await MainActor.run { shared.isReady }
     }
 
     func installAndLoadExtensions() {
-        if controller != nil { return }
-        if preparingTask != nil { return }
-        preparingTask = Task { [weak self] in
-            defer { self?.preparingTask = nil }
-            return await ExtensionManager.prepareExtensionSystem()
-        }
+        startPreparationIfNeeded()
     }
 
     func applyExtensions(to configuration: WKWebViewConfiguration) {
@@ -67,11 +90,10 @@ final class ExtensionManager: NSObject, ObservableObject, WKWebExtensionControll
             return
         }
 
-        Task { @MainActor [weak self, weak configuration] in
-            guard let self else { return }
-            let success = await ExtensionManager.prepareExtensionSystem()
-            guard success, let controller = self.controller else { return }
-            configuration?.webExtensionController = controller
+        waitUntilReady()
+
+        if let controller {
+            configuration.webExtensionController = controller
         }
     }
 
@@ -81,10 +103,25 @@ final class ExtensionManager: NSObject, ObservableObject, WKWebExtensionControll
         lastActiveWebView = webView
 
         if #available(macOS 15.4, *) {
+            let tab: SimpleExtensionTab
             if let existing = tabs[id] {
                 existing.attach(webView: webView)
+                tab = existing
             } else {
-                tabs[id] = SimpleExtensionTab(webView: webView, identifier: id)
+                let created = SimpleExtensionTab(webView: webView, identifier: id)
+                tabs[id] = created
+                tab = created
+            }
+
+            acknowledgedTabs.remove(id)
+            extensionWindow?.attach(tab: tab)
+            enqueueControllerAction { [weak self, weak tab] in
+                guard let self,
+                      let controller = self.controller,
+                      let tab else { return }
+                controller.didOpenTab(tab)
+                self.notifyInitialState(for: tab, controller: controller)
+                self.waitForTabAcknowledgement(tab)
             }
         }
     }
@@ -94,12 +131,92 @@ final class ExtensionManager: NSObject, ObservableObject, WKWebExtensionControll
             identifierForWebView.removeObject(forKey: webView)
         }
         webViews.removeValue(forKey: id)
-        tabs.removeValue(forKey: id)
+        if #available(macOS 15.4, *), let tab = tabs.removeValue(forKey: id) {
+            extensionWindow?.detach(tab: tab)
+            enqueueControllerAction { [weak self, weak tab] in
+                guard let self,
+                      let controller = self.controller,
+                      let tab else { return }
+                controller.didCloseTab(tab, windowIsClosing: false)
+            }
+            if lastActiveTabRef === tab {
+                lastActiveTabRef = nil
+            }
+            acknowledgedTabs.remove(id)
+        }
     }
 
     func markWebViewActive(_ webView: WKWebView) {
         lastActiveWebView = webView
+        guard #available(macOS 15.4, *),
+              let tab = tab(for: webView) else { return }
+
+        let previousTab = lastActiveTabRef
+        if previousTab === tab { return }
+
+        lastActiveTabRef = tab
+        extensionWindow?.markActive(tab)
+
+        enqueueControllerAction { [weak self, weak tab] in
+            guard let self,
+                  let controller = self.controller,
+                  let tab else { return }
+            controller.didActivateTab(tab, previousActiveTab: previousTab)
+            controller.didSelectTabs([tab])
+            if let previous = previousTab, previous !== tab {
+                controller.didDeselectTabs([previous])
+            }
+        }
     }
+
+    func updatePendingNavigation(for webView: WKWebView, url: URL?) {
+        guard #available(macOS 15.4, *),
+              let id = identifierForWebView.object(forKey: webView) as String?,
+              let tab = tabs[id] else { return }
+        let changed = tab.updatePendingNavigation(url)
+        notifyTabProperties(changed, for: tab)
+        lastActiveWebView = webView
+    }
+
+    func commitNavigation(for webView: WKWebView, url: URL?) {
+        guard #available(macOS 15.4, *),
+              let id = identifierForWebView.object(forKey: webView) as String?,
+              let tab = tabs[id] else { return }
+        let changed = tab.commitNavigation(url)
+        notifyTabProperties(changed, for: tab)
+        lastActiveWebView = webView
+    }
+
+    func updateTitle(for webView: WKWebView, title: String?) {
+        guard #available(macOS 15.4, *),
+              let id = identifierForWebView.object(forKey: webView) as String?,
+              let tab = tabs[id] else { return }
+        let changed = tab.updateTitle(title)
+        notifyTabProperties(changed, for: tab)
+    }
+
+    func updateLoadingState(for webView: WKWebView, isLoading: Bool) {
+        guard #available(macOS 15.4, *),
+              let id = identifierForWebView.object(forKey: webView) as String?,
+              let tab = tabs[id] else { return }
+        var changed = tab.updateLoadingState(isLoading)
+        if !isLoading {
+            changed.formUnion(tab.clearPendingNavigation())
+        }
+        notifyTabProperties(changed, for: tab)
+    }
+
+    #if os(macOS)
+    func updateWindow(for webView: WKWebView, window: NSWindow?) {
+        guard #available(macOS 15.4, *),
+              let tab = tab(for: webView) else { return }
+        extensionWindow?.updateWindowReference(window)
+        if window != nil {
+            extensionWindow?.attach(tab: tab)
+        }
+        ensureWindowRegisteredWithController()
+    }
+    #endif
 
     func waitForExtensionRulesSync() {
         guard !isReady else { return }
@@ -108,6 +225,19 @@ final class ExtensionManager: NSObject, ObservableObject, WKWebExtensionControll
 
     func ensureAllExtensionsReady() {
         waitUntilReady()
+    }
+
+    func ensureTabAcknowledged(for webView: WKWebView) {
+        guard #available(macOS 15.4, *),
+              let id = identifierForWebView.object(forKey: webView) as String?,
+              acknowledgedTabs.contains(id) == false,
+              let tab = tabs[id] else { return }
+
+        if controller == nil {
+            waitUntilReady()
+        }
+
+        waitForTabAcknowledgement(tab)
     }
 
     func openExtensionPopup(for extensionId: String) -> Bool {
@@ -161,6 +291,21 @@ final class ExtensionManager: NSObject, ObservableObject, WKWebExtensionControll
         completionHandler(tab(for: webView), nil)
     }
 
+    func webExtensionController(_ controller: WKWebExtensionController,
+                                openWindowsFor extensionContext: WKWebExtensionContext) -> [any WKWebExtensionWindow] {
+        guard #available(macOS 15.4, *),
+              let extensionWindow = extensionWindow,
+              !extensionWindow.currentTabs().isEmpty else { return [] }
+        return [extensionWindow]
+    }
+
+    func webExtensionController(_ controller: WKWebExtensionController,
+                                focusedWindowFor extensionContext: WKWebExtensionContext) -> (any WKWebExtensionWindow)? {
+        guard #available(macOS 15.4, *),
+              let extensionWindow = extensionWindow else { return nil }
+        return activeTab() == nil ? nil : extensionWindow
+    }
+
     // MARK: - Private helpers
 
     @MainActor
@@ -183,6 +328,8 @@ final class ExtensionManager: NSObject, ObservableObject, WKWebExtensionControll
 
             self.controller = controller
             self.contexts = loadedContexts
+            ensureWindowRegisteredWithController()
+            flushPendingControllerActions()
             return true
         } catch {
             print("[ExtensionManager] Failed to prepare extensions: \(error)")
@@ -233,10 +380,66 @@ final class ExtensionManager: NSObject, ObservableObject, WKWebExtensionControll
     }
 
     private func waitUntilReady() {
-        let deadline = Date().addingTimeInterval(readinessTimeout)
-        while Date() < deadline {
-            if isReady { break }
+        guard ExtensionUtils.isExtensionSupportAvailable else { return }
+
+        startPreparationIfNeeded()
+
+        var fallbackDeadline: Date?
+        while !isReady {
+            if contexts.isEmpty && preparingTask == nil { break }
+
+            if preparingTask == nil {
+                if fallbackDeadline == nil {
+                    fallbackDeadline = Date().addingTimeInterval(readinessTimeout)
+                } else if let deadline = fallbackDeadline, Date() >= deadline {
+                    print("[ExtensionManager] Extension readiness timed out after \(readinessTimeout)s")
+                    break
+                }
+            }
+
             RunLoop.current.run(mode: .default, before: Date().addingTimeInterval(readinessStep))
+        }
+    }
+
+    private func startPreparationIfNeeded() {
+        guard ExtensionUtils.isExtensionSupportAvailable else { return }
+        guard controller == nil else { return }
+        guard preparingTask == nil else { return }
+
+        preparingTask = Task { @MainActor [weak self] in
+            guard let self else { return false }
+            defer { self.preparingTask = nil }
+            return await self.prepareIfNeeded()
+        }
+    }
+
+    private func enqueueControllerAction(_ action: @escaping () -> Void) {
+        if controller != nil {
+            ensureWindowRegisteredWithController()
+            action()
+        } else {
+            pendingControllerActions.append { [weak self] in
+                guard let self else { return }
+                self.ensureWindowRegisteredWithController()
+                action()
+            }
+        }
+    }
+
+    private func flushPendingControllerActions() {
+        guard controller != nil else { return }
+        let actions = pendingControllerActions
+        pendingControllerActions.removeAll()
+        actions.forEach { $0() }
+    }
+
+    private func ensureWindowRegisteredWithController() {
+        guard #available(macOS 15.4, *),
+              let controller = controller,
+              let extensionWindow = extensionWindow else { return }
+        if !didNotifyWindowOpen {
+            controller.didOpenWindow(extensionWindow)
+            didNotifyWindowOpen = true
         }
     }
 
@@ -249,21 +452,86 @@ final class ExtensionManager: NSObject, ObservableObject, WKWebExtensionControll
         }
         let tab = SimpleExtensionTab(webView: webView, identifier: id)
         tabs[id] = tab
+        acknowledgedTabs.remove(id)
         return tab
     }
 
     @available(macOS 15.4, *)
     private func activeTab() -> SimpleExtensionTab? {
-        if let webView = lastActiveWebView, let tab = tab(for: webView) {
+        if let tab = lastActiveTabRef {
             return tab
         }
-        for case let (id, wrapper) in webViews {
-            if let webView = wrapper.value {
+        if let windowTab = extensionWindow?.currentTabs().first {
+            lastActiveTabRef = windowTab
+            return windowTab
+        }
+        if let webView = lastActiveWebView, let tab = tab(for: webView) {
+            lastActiveTabRef = tab
+            return tab
+        }
+        for case let (_, wrapper) in webViews {
+            if let webView = wrapper.value, let tab = tab(for: webView) {
                 lastActiveWebView = webView
-                return tab(for: webView) ?? tabs[id]
+                lastActiveTabRef = tab
+                return tab
             }
         }
         return nil
+    }
+
+    @available(macOS 15.4, *)
+    private func notifyTabProperties(_ properties: WKWebExtension.TabChangedProperties, for tab: SimpleExtensionTab) {
+        guard !properties.isEmpty else { return }
+        enqueueControllerAction { [weak self, weak tab] in
+            guard let self,
+                  let controller = self.controller,
+                  let tab else { return }
+            controller.didChangeTabProperties(properties, for: tab)
+        }
+    }
+
+    @available(macOS 15.4, *)
+    private func notifyInitialState(for tab: SimpleExtensionTab, controller: WKWebExtensionController) {
+        controller.didChangeTabProperties([.URL, .title, .loading], for: tab)
+    }
+
+    @available(macOS 15.4, *)
+    private func waitForTabAcknowledgement(_ tab: SimpleExtensionTab) {
+        let identifier = tab.identifier
+        guard !acknowledgedTabs.contains(identifier) else { return }
+
+        if contexts.isEmpty {
+            acknowledgedTabs.insert(identifier)
+            return
+        }
+
+        let deadline = Date().addingTimeInterval(tabReadinessTimeout)
+        while Date() < deadline {
+            if contexts.allSatisfy({ contextContainsTab($0, tab: tab) }) {
+                acknowledgedTabs.insert(identifier)
+                return
+            }
+
+            RunLoop.current.run(mode: .default, before: Date().addingTimeInterval(readinessStep))
+        }
+
+        if !acknowledgedTabs.contains(identifier) {
+            print("[ExtensionManager] Timed out waiting for tab \(identifier) to register with extensions")
+        }
+    }
+
+    @available(macOS 15.4, *)
+    private func contextContainsTab(_ context: WKWebExtensionContext, tab: SimpleExtensionTab) -> Bool {
+        for entry in context.openTabs {
+            let base = entry.base
+            if let candidate = base as? SimpleExtensionTab, candidate === tab {
+                return true
+            }
+            if let candidate = base as? NSObject, candidate === tab {
+                return true
+            }
+        }
+        return false
     }
 
     static func getExtensionsDirectory() -> URL {
