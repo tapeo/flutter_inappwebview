@@ -433,14 +433,16 @@ final class ExtensionManager: NSObject, ObservableObject, WKWebExtensionControll
         }
 
         for entry in contents {
-            var isDirectory: ObjCBool = false
-            guard fm.fileExists(atPath: entry.path, isDirectory: &isDirectory), isDirectory.boolValue else { continue }
+            //var isDirectory: ObjCBool = false
+            // guard fm.fileExists(atPath: entry.path, isDirectory: &isDirectory), isDirectory.boolValue else { continue }
 
-            let manifestURL = entry.appendingPathComponent("manifest.json")
-            guard fm.fileExists(atPath: manifestURL.path) else { continue }
+            //let manifestURL = entry.appendingPathComponent("manifest.json")
+            //guard fm.fileExists(atPath: manifestURL.path) else { continue }
 
-            _ = try ExtensionUtils.validateManifest(at: manifestURL)
-            let webExtension = try await WKWebExtension(resourceBaseURL: entry)
+            //_ = try ExtensionUtils.validateManifest(at: manifestURL)
+            print(entry.absoluteURL)
+            let bundle = Bundle(url: entry)
+            let webExtension = try await WKWebExtension(appExtensionBundle: bundle!)
             let context = WKWebExtensionContext(for: webExtension)
 
             grantPermissions(to: context, for: webExtension)
