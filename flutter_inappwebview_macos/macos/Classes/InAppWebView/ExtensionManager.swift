@@ -100,8 +100,6 @@ final class ExtensionManager: NSObject, ObservableObject, WKWebExtensionControll
             return
         }
 
-        waitUntilReady()
-
         if let controller {
             configuration.webExtensionController = controller
         }
@@ -131,7 +129,6 @@ final class ExtensionManager: NSObject, ObservableObject, WKWebExtensionControll
                       let tab else { return }
                 controller.didOpenTab(tab)
                 self.notifyInitialState(for: tab, controller: controller)
-                self.waitForTabAcknowledgement(tab)
             }
         }
     }
@@ -228,28 +225,6 @@ final class ExtensionManager: NSObject, ObservableObject, WKWebExtensionControll
     }
     #endif
 
-    func waitForExtensionRulesSync() {
-        guard !isReady else { return }
-        waitUntilReady()
-    }
-
-    func ensureAllExtensionsReady() {
-        waitUntilReady()
-    }
-
-    func ensureTabAcknowledged(for webView: WKWebView) {
-        guard #available(macOS 15.4, *),
-              let id = identifierForWebView.object(forKey: webView) as String?,
-              acknowledgedTabs.contains(id) == false,
-              let tab = tabs[id] else { return }
-
-        if controller == nil {
-            waitUntilReady()
-        }
-
-        waitForTabAcknowledgement(tab)
-    }
-
     func openExtensionPopup(for extensionId: String) -> Bool {
         guard let controller = controller else { return false }
         guard let context = controller.extensionContexts.first(where: { $0.uniqueIdentifier == extensionId }) else { return false }
@@ -290,8 +265,6 @@ final class ExtensionManager: NSObject, ObservableObject, WKWebExtensionControll
 
     func setExtensionEnabled(extensionId: String, isEnabled: Bool) -> Bool {
         guard ExtensionUtils.isExtensionSupportAvailable else { return false }
-
-        waitUntilReady()
 
         guard let context = contexts.first(where: { $0.uniqueIdentifier == extensionId }) else {
             print("[ExtensionManager] No extension context found for id \(extensionId)")
@@ -491,28 +464,6 @@ final class ExtensionManager: NSObject, ObservableObject, WKWebExtensionControll
         }
     }
 
-    private func waitUntilReady() {
-        guard ExtensionUtils.isExtensionSupportAvailable else { return }
-
-        startPreparationIfNeeded()
-
-        var fallbackDeadline: Date?
-        while !isReady {
-            if contexts.isEmpty && preparingTask == nil { break }
-
-            if preparingTask == nil {
-                if fallbackDeadline == nil {
-                    fallbackDeadline = Date().addingTimeInterval(readinessTimeout)
-                } else if let deadline = fallbackDeadline, Date() >= deadline {
-                    print("[ExtensionManager] Extension readiness timed out after \(readinessTimeout)s")
-                    break
-                }
-            }
-
-            RunLoop.current.run(mode: .default, before: Date().addingTimeInterval(readinessStep))
-        }
-    }
-
     private func startPreparationIfNeeded() {
         guard ExtensionUtils.isExtensionSupportAvailable else { return }
         guard controller == nil else { return }
@@ -605,31 +556,6 @@ final class ExtensionManager: NSObject, ObservableObject, WKWebExtensionControll
     @available(macOS 15.4, *)
     private func notifyInitialState(for tab: SimpleExtensionTab, controller: WKWebExtensionController) {
         controller.didChangeTabProperties([.URL, .title, .loading], for: tab)
-    }
-
-    @available(macOS 15.4, *)
-    private func waitForTabAcknowledgement(_ tab: SimpleExtensionTab) {
-        let identifier = tab.identifier
-        guard !acknowledgedTabs.contains(identifier) else { return }
-
-        if contexts.isEmpty {
-            acknowledgedTabs.insert(identifier)
-            return
-        }
-
-        let deadline = Date().addingTimeInterval(tabReadinessTimeout)
-        while Date() < deadline {
-            if contexts.allSatisfy({ contextContainsTab($0, tab: tab) }) {
-                acknowledgedTabs.insert(identifier)
-                return
-            }
-
-            RunLoop.current.run(mode: .default, before: Date().addingTimeInterval(readinessStep))
-        }
-
-        if !acknowledgedTabs.contains(identifier) {
-            print("[ExtensionManager] Timed out waiting for tab \(identifier) to register with extensions")
-        }
     }
 
     @available(macOS 15.4, *)

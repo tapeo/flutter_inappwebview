@@ -625,20 +625,15 @@ public class InAppWebView: WKWebView, WKUIDelegate,
 
         if isFirstRealNavigation {
             if forceReadiness {
-                extensionManager.ensureAllExtensionsReady()
                 isFirstRealNavigation = false
             } else if let targetURL {
                 if targetURL.scheme != "about" {
-                    extensionManager.ensureAllExtensionsReady()
                     isFirstRealNavigation = false
                 }
             } else {
-                extensionManager.ensureAllExtensionsReady()
                 isFirstRealNavigation = false
             }
         }
-
-        extensionManager.ensureTabAcknowledged(for: self)
     }
     
     func setSettings(newSettings: InAppWebViewSettings, newSettingsMap: [String: Any]) {
