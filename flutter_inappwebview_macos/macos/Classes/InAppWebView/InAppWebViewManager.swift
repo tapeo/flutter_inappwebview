@@ -104,6 +104,24 @@ public class InAppWebViewManager: ChannelDelegate {
                     result(extensions)
                 }
                 break
+            case "setExtensionEnabled":
+                guard
+                    let extensionId = arguments?["extensionId"] as? String,
+                    let isEnabled = arguments?["isEnabled"] as? Bool
+                else {
+                    result(FlutterError(
+                        code: "INVALID_ARGUMENTS",
+                        message: "Missing extensionId or isEnabled",
+                        details: nil
+                    ))
+                    return
+                }
+
+                Task { @MainActor in
+                    let success = ExtensionManager.shared.setExtensionEnabled(extensionId: extensionId, isEnabled: isEnabled)
+                    result(success)
+                }
+                break
             default:
                 result(FlutterMethodNotImplemented)
                 break

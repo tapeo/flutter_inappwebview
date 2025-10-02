@@ -78,8 +78,29 @@ extension URLRequest {
         if #available(macOS 12.0, *) {
             _attribution = attribution.rawValue
         }
+        let originalURL = url
+        var serializedURL: String? = nil
+        if let originalURL = originalURL {
+            if let scheme = originalURL.scheme, !scheme.isEmpty {
+                serializedURL = originalURL.absoluteString
+            } else {
+                let baseCandidates: [URL?] = [originalURL.baseURL, mainDocumentURL]
+                var resolvedURL: URL? = nil
+                for base in baseCandidates {
+                    guard let base = base else { continue }
+                    resolvedURL = URL(string: originalURL.relativeString, relativeTo: base)?.absoluteURL
+                    if resolvedURL != nil {
+                        break
+                    }
+                }
+                serializedURL = resolvedURL?.absoluteString ?? originalURL.relativeString
+            }
+        } else if let mainDocumentURL = mainDocumentURL {
+            serializedURL = mainDocumentURL.absoluteString
+        }
+
         return [
-            "url": url?.absoluteString,
+            "url": serializedURL,
             "method": httpMethod,
             "headers": allHTTPHeaderFields,
             "body": httpBody.map(FlutterStandardTypedData.init(bytes:)),

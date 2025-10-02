@@ -2626,6 +2626,19 @@ abstract class PlatformInAppWebViewController extends PlatformInterface
         'openExtensionPopup is not implemented on the current platform');
   }
 
+  ///{@template flutter_inappwebview_platform_interface.PlatformInAppWebViewController.setExtensionEnabled}
+  ///Enables or disables an installed extension identified by [extensionId].
+  ///
+  ///Returns `true` when the operation succeeds, otherwise `false`.
+  ///
+  ///**Officially Supported Platforms/Implementations**:
+  ///- macOS
+  ///{@endtemplate}
+  Future<bool> setExtensionEnabled(String extensionId, bool isEnabled) {
+    throw UnimplementedError(
+        'setExtensionEnabled is not implemented on the current platform');
+  }
+
   ///{@template flutter_inappwebview_platform_interface.PlatformInAppWebViewController.setOptions}
   ///Use [setSettings] instead.
   ///{@endtemplate}

@@ -45,6 +45,7 @@ final class ExtensionManager: NSObject, ObservableObject, WKWebExtensionControll
     private var pendingControllerActions: [() -> Void] = []
     private var didNotifyWindowOpen = false
     private var acknowledgedTabs: Set<String> = []
+    private let popupManager = ExtensionPopupWindowManager.shared
 
     var extensionController: WKWebExtensionController? { controller }
     var extensionContext: WKWebExtensionContext? { controller?.extensionContexts.first }
@@ -57,6 +58,15 @@ final class ExtensionManager: NSObject, ObservableObject, WKWebExtensionControll
             extensionWindow = nil
         }
         super.init()
+
+        popupManager.onPopoverClosed = { [weak self] extensionId in
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                guard #available(macOS 15.4, *) else { return }
+                guard let context = self.contexts.first(where: { $0.uniqueIdentifier == extensionId }) else { return }
+                context.action(for: nil)?.closePopup()
+            }
+        }
     }
 
     // MARK: Public API
@@ -257,12 +267,55 @@ final class ExtensionManager: NSObject, ObservableObject, WKWebExtensionControll
 
     func getAllInstalledExtensions() -> [[String: Any]] {
         contexts.map { context in
-            [
+            let webExtension = context.webExtension
+            let action = context.action(for: nil)
+            let resolvedName = webExtension.displayName
+                ?? webExtension.displayShortName
+                ?? action?.label
+                ?? "Unknown"
+            let resolvedVersion = webExtension.displayVersion
+                ?? webExtension.version
+                ?? "Unknown"
+
+            return [
                 "id": context.uniqueIdentifier,
-                "name": context.webExtension.displayName ?? "Unknown",
-                "version": context.webExtension.version ?? "Unknown",
-                "isLoaded": context.isLoaded
+                "name": resolvedName,
+                "version": resolvedVersion,
+                "isLoaded": context.isLoaded,
+                "hasPopup": action?.presentsPopup ?? false,
+                "description": webExtension.displayDescription ?? ""
             ]
+        }
+    }
+
+    func setExtensionEnabled(extensionId: String, isEnabled: Bool) -> Bool {
+        guard ExtensionUtils.isExtensionSupportAvailable else { return false }
+
+        waitUntilReady()
+
+        guard let context = contexts.first(where: { $0.uniqueIdentifier == extensionId }) else {
+            print("[ExtensionManager] No extension context found for id \(extensionId)")
+            return false
+        }
+
+        guard let controller else {
+            print("[ExtensionManager] Controller not ready while toggling extension \(extensionId)")
+            return false
+        }
+
+        do {
+            if isEnabled {
+                guard !context.isLoaded else { return true }
+                try controller.load(context)
+                ensureWindowRegisteredWithController()
+            } else {
+                guard context.isLoaded else { return true }
+                try controller.unload(context)
+            }
+            return true
+        } catch {
+            print("[ExtensionManager] Failed to toggle extension \(extensionId) to \(isEnabled ? "enabled" : "disabled"): \(error)")
+            return false
         }
     }
 
@@ -304,6 +357,61 @@ final class ExtensionManager: NSObject, ObservableObject, WKWebExtensionControll
         guard #available(macOS 15.4, *),
               let extensionWindow = extensionWindow else { return nil }
         return activeTab() == nil ? nil : extensionWindow
+    }
+
+    @available(macOS 15.4, *)
+    func webExtensionController(_ controller: WKWebExtensionController,
+                                presentActionPopup action: WKWebExtension.Action,
+                                for extensionContext: WKWebExtensionContext,
+                                completionHandler: @escaping (Error?) -> Void) {
+        guard #available(macOS 15.4, *) else {
+            completionHandler(NSError(
+                domain: "ExtensionManager",
+                code: 1,
+                userInfo: [NSLocalizedDescriptionKey: "Extension popups require macOS 15.4 or newer"]
+            ))
+            return
+        }
+
+        guard action.presentsPopup, let popover = action.popupPopover else {
+            completionHandler(NSError(
+                domain: "ExtensionManager",
+                code: 2,
+                userInfo: [NSLocalizedDescriptionKey: "Extension action does not provide a popup"]
+            ))
+            return
+        }
+
+        popupManager.closeExistingPopoverForExtension(extensionContext.uniqueIdentifier)
+
+        let targetTab: SimpleExtensionTab?
+        if let associatedTab = action.associatedTab as? SimpleExtensionTab {
+            targetTab = associatedTab
+        } else {
+            targetTab = activeTab()
+        }
+
+        guard let tab = targetTab,
+              let anchorView = tab.webView(for: extensionContext) ?? lastActiveWebView else {
+            completionHandler(NSError(
+                domain: "ExtensionManager",
+                code: 3,
+                userInfo: [NSLocalizedDescriptionKey: "Unable to determine anchor view for extension popup"]
+            ))
+            return
+        }
+
+        Task { @MainActor in
+            if let window = anchorView.window {
+                extensionWindow?.updateWindowReference(window)
+            }
+
+            popover.behavior = .semitransient
+            popupManager.addPopover(popover, forExtension: extensionContext.uniqueIdentifier)
+            popover.show(relativeTo: anchorView.bounds, of: anchorView, preferredEdge: .maxY)
+
+            completionHandler(nil)
+        }
     }
 
     // MARK: - Private helpers

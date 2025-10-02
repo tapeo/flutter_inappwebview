@@ -2822,7 +2822,8 @@ class MacOSInAppWebViewController extends PlatformInAppWebViewController
   @override
   Future<List<Map<String, dynamic>>> getAllInstalledExtensions() async {
     Map<String, dynamic> args = <String, dynamic>{};
-    var result = await _staticChannel.invokeMethod('getAllInstalledExtensions', args);
+    var result =
+        await _staticChannel.invokeMethod('getAllInstalledExtensions', args);
 
     if (result == null) return [];
 
@@ -2831,6 +2832,16 @@ class MacOSInAppWebViewController extends PlatformInAppWebViewController
     return resultList
         .map((item) => Map<String, dynamic>.from(item as Map))
         .toList();
+  }
+
+  @override
+  Future<bool> setExtensionEnabled(String extensionId, bool isEnabled) async {
+    Map<String, dynamic> args = <String, dynamic>{
+      'extensionId': extensionId,
+      'isEnabled': isEnabled,
+    };
+    var result = await _staticChannel.invokeMethod('setExtensionEnabled', args);
+    return result ?? false;
   }
 
   @override
