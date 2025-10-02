@@ -292,9 +292,30 @@ final class ExtensionManager: NSObject, ObservableObject, WKWebExtensionControll
         }
     }
 
-    func getExtensionsDirectoryPath() -> String {
-        return Self.getExtensionsDirectory().path
+func getExtensionsDirectoryPath() -> String {
+    let extensionsDir = Self.getExtensionsDirectory()
+    do {
+        try FileManager.default.createDirectory(at: extensionsDir, withIntermediateDirectories: true, attributes: nil)
+    } catch {
+        print("Failed to create extensions directory: \(error)")
     }
+
+    let foldersDir = extensionsDir.appendingPathComponent("Folders")
+    do {
+        try FileManager.default.createDirectory(at: foldersDir, withIntermediateDirectories: true, attributes: nil)
+    } catch {
+        print("Failed to create Folders directory: \(error)")
+    }
+
+    let bundlesDir = extensionsDir.appendingPathComponent("Bundles")
+    do {
+        try FileManager.default.createDirectory(at: bundlesDir, withIntermediateDirectories: true, attributes: nil)
+    } catch {
+        print("Failed to create Bundles directory: \(error)")
+    }
+
+    return extensionsDir.path
+}
 
     // MARK: - WKWebExtensionControllerDelegate
 
@@ -428,29 +449,50 @@ final class ExtensionManager: NSObject, ObservableObject, WKWebExtensionControll
 
     @MainActor
     private func loadExtensionsFromDisk() async throws -> [WKWebExtensionContext] {
-        let root = ExtensionManager.getExtensionsDirectory()
+        let userRoot = ExtensionManager.getExtensionsDirectory().appendingPathComponent("Folders")
+        let bundleRoot = ExtensionManager.getExtensionsDirectory().appendingPathComponent("Bundles")
         var contexts: [WKWebExtensionContext] = []
         let fm = FileManager.default
 
-        guard let contents = try? fm.contentsOfDirectory(at: root, includingPropertiesForKeys: [.isDirectoryKey], options: .skipsHiddenFiles) else {
-            return []
+        var loadedIdentifiers: Set<String> = []
+       
+        // process folders only
+        let userContents = try? fm.contentsOfDirectory(at: userRoot, includingPropertiesForKeys: [.isDirectoryKey], options: .skipsHiddenFiles)
+        for entry in userContents ?? [] {
+            let manifestURL = entry.appendingPathComponent("manifest.json")
+            guard fm.fileExists(atPath: manifestURL.path) else { continue }
+
+            do {
+                let webExtension = try await WKWebExtension(resourceBaseURL: entry)
+                let context = WKWebExtensionContext(for: webExtension)
+
+                let id = context.uniqueIdentifier
+                if loadedIdentifiers.contains(id) { continue }
+                loadedIdentifiers.insert(id)
+
+                grantPermissions(to: context, for: webExtension)
+                contexts.append(context)
+            } catch {
+                print("[ExtensionManager] Failed to load folder extension from \(entry.path): \(error)")
+            }
         }
 
-        for entry in contents {
-            //var isDirectory: ObjCBool = false
-            // guard fm.fileExists(atPath: entry.path, isDirectory: &isDirectory), isDirectory.boolValue else { continue }
+        // process bundles only
+        let bundleContents = try? fm.contentsOfDirectory(at: bundleRoot, includingPropertiesForKeys: [.isDirectoryKey], options: .skipsHiddenFiles)
+        for entry in bundleContents ?? [] {
+            do {
+                let webExtension = try await WKWebExtension(appExtensionBundle: Bundle(url: entry)!)
+                let context = WKWebExtensionContext(for: webExtension)
 
-            //let manifestURL = entry.appendingPathComponent("manifest.json")
-            //guard fm.fileExists(atPath: manifestURL.path) else { continue }
+                let id = context.uniqueIdentifier
+                if loadedIdentifiers.contains(id) { continue }
+                loadedIdentifiers.insert(id)
 
-            //_ = try ExtensionUtils.validateManifest(at: manifestURL)
-            print(entry.absoluteURL)
-            let bundle = Bundle(url: entry)
-            let webExtension = try await WKWebExtension(appExtensionBundle: bundle!)
-            let context = WKWebExtensionContext(for: webExtension)
-
-            grantPermissions(to: context, for: webExtension)
-            contexts.append(context)
+                grantPermissions(to: context, for: webExtension)
+                contexts.append(context)
+            } catch {
+                print("[ExtensionManager] Failed to load bundle extension from \(entry.path): \(error)")
+            }
         }
 
         return contexts
