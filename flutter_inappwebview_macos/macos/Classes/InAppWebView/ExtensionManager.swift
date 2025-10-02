@@ -292,6 +292,10 @@ final class ExtensionManager: NSObject, ObservableObject, WKWebExtensionControll
         }
     }
 
+    func getExtensionsDirectoryPath() -> String {
+        return Self.getExtensionsDirectory().path
+    }
+
     // MARK: - WKWebExtensionControllerDelegate
 
     func webExtensionController(_ webExtensionController: WKWebExtensionController,

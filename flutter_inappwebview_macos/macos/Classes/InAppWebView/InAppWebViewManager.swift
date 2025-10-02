@@ -122,6 +122,12 @@ public class InAppWebViewManager: ChannelDelegate {
                     result(success)
                 }
                 break
+            case "getExtensionsDirectoryPath":
+                Task { @MainActor in
+                    let path = ExtensionManager.shared.getExtensionsDirectoryPath()
+                    result(path)
+                }
+                break
             default:
                 result(FlutterMethodNotImplemented)
                 break

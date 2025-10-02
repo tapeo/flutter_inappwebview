@@ -2639,6 +2639,17 @@ abstract class PlatformInAppWebViewController extends PlatformInterface
         'setExtensionEnabled is not implemented on the current platform');
   }
 
+  ///{@template flutter_inappwebview_platform_interface.PlatformInAppWebViewController.getExtensionsDirectoryPath}
+  ///Gets the path to the directory where extensions are stored.
+  ///
+  ///**Officially Supported Platforms/Implementations**:
+  ///- macOS
+  ///{@endtemplate}
+  Future<String> getExtensionsDirectoryPath() {
+    throw UnimplementedError(
+        'getExtensionsDirectoryPath is not implemented on the current platform');
+  }
+
   ///{@template flutter_inappwebview_platform_interface.PlatformInAppWebViewController.setOptions}
   ///Use [setSettings] instead.
   ///{@endtemplate}

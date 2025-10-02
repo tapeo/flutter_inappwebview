@@ -2845,6 +2845,14 @@ class MacOSInAppWebViewController extends PlatformInAppWebViewController
   }
 
   @override
+  Future<String> getExtensionsDirectoryPath() async {
+    Map<String, dynamic> args = <String, dynamic>{};
+    var result =
+        await _staticChannel.invokeMethod('getExtensionsDirectoryPath', args);
+    return result ?? '';
+  }
+
+  @override
   Future<bool> openExtensionPopup(String extensionId) async {
     Map<String, dynamic> args = <String, dynamic>{
       'extensionId': extensionId,

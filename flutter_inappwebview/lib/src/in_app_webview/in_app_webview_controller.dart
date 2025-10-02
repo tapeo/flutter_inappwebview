@@ -644,6 +644,10 @@ class InAppWebViewController {
       PlatformInAppWebViewController.static()
           .setExtensionEnabled(extensionId, isEnabled);
 
+  ///{@macro flutter_inappwebview_platform_interface.PlatformInAppWebViewController.getExtensionsDirectoryPath}
+  static Future<String> getExtensionsDirectoryPath() =>
+      PlatformInAppWebViewController.static().getExtensionsDirectoryPath();
+
   ///{@macro flutter_inappwebview_platform_interface.PlatformInAppWebViewController.getViewId}
   dynamic getViewId() => platform.getViewId();
 
