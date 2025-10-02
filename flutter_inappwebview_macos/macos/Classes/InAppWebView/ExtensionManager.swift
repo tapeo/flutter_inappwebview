@@ -381,6 +381,10 @@ final class ExtensionManager: NSObject, ObservableObject, WKWebExtensionControll
             ))
             return
         }
+        
+        action.webExtensionContext?.isInspectable = true
+        extensionContext.isInspectable = true
+        action.popupWebView?.isInspectable = true
 
         popupManager.closeExistingPopoverForExtension(extensionContext.uniqueIdentifier)
 
