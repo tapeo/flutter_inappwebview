@@ -2982,18 +2982,19 @@ if(window.\(JavaScriptBridgeJS.get_JAVASCRIPT_BRIDGE_NAME())[\(_callHandlerID)] 
     
     // MARK: - Context Menu Handler for Image Downloads (macOS)
     private var lastRightClickPoint: NSPoint = NSPoint.zero
-    
+
     public override func rightMouseDown(with event: NSEvent) {
         // Store the click location for later use
         lastRightClickPoint = convert(event.locationInWindow, from: nil)
-        
+
         // Pass coordinates to Flutter for custom context menu
         if let channelDelegate = channelDelegate {
             channelDelegate.onRightClick(x: Double(lastRightClickPoint.x), y: Double(lastRightClickPoint.y))
         }
-        
-        // Do NOT call super.rightMouseDown to prevent system menu
-        // super.rightMouseDown(with: event)
+
+        // Call super to allow webview to process the right-click event
+        // The willOpenMenu method will prevent the native context menu from showing
+        super.rightMouseDown(with: event)
     }
     
     public override func willOpenMenu(_ menu: NSMenu, with event: NSEvent) {

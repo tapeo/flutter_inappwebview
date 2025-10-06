@@ -278,7 +278,7 @@ final class ExtensionManager: NSObject, ObservableObject, WKWebExtensionControll
 
         do {
             if isEnabled {
-                guard !context.isLoaded else { return true }
+                try? controller.unload(context)
                 try controller.load(context)
                 ensureWindowRegisteredWithController()
             } else {
@@ -383,7 +383,10 @@ func getExtensionsDirectoryPath() -> String {
         action.webExtensionContext?.isInspectable = true
         extensionContext.isInspectable = true
         action.popupWebView?.isInspectable = true
-
+        
+        let ua = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.4 Safari/605.1.15"
+        action.popupWebView?.customUserAgent = ua
+            
         popupManager.closeExistingPopoverForExtension(extensionContext.uniqueIdentifier)
 
         let targetTab: SimpleExtensionTab?
