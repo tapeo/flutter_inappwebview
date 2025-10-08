@@ -83,6 +83,42 @@ public class InAppWebViewManager: ChannelDelegate {
             case "getJavaScriptBridgeName":
                 result(JavaScriptBridgeJS.get_JAVASCRIPT_BRIDGE_NAME())
                 break
+            case "startExtensions":
+                Task {
+                    let success = await ExtensionManager.prepareExtensionSystem()
+                    result(success)
+                }
+                break
+            case "getAllInstalledExtensions":
+                Task { @MainActor in
+                    let extensions = ExtensionManager.shared.getAllInstalledExtensions()
+                    result(extensions)
+                }
+                break
+            case "setExtensionEnabled":
+                guard
+                    let extensionId = arguments?["extensionId"] as? String,
+                    let isEnabled = arguments?["isEnabled"] as? Bool
+                else {
+                    result(FlutterError(
+                        code: "INVALID_ARGUMENTS",
+                        message: "Missing extensionId or isEnabled",
+                        details: nil
+                    ))
+                    return
+                }
+
+                Task { @MainActor in
+                    let success = ExtensionManager.shared.setExtensionEnabled(extensionId: extensionId, isEnabled: isEnabled)
+                    result(success)
+                }
+                break
+            case "getExtensionsDirectoryPath":
+                Task { @MainActor in
+                    let path = ExtensionManager.shared.getExtensionsDirectoryPath()
+                    result(path)
+                }
+                break
             default:
                 result(FlutterMethodNotImplemented)
                 break

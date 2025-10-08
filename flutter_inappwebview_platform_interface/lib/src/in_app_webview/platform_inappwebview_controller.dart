@@ -2581,6 +2581,70 @@ abstract class PlatformInAppWebViewController extends PlatformInterface
   Future<String> get tRexRunnerCss => throw UnimplementedError(
       'tRexRunnerCss is not implemented on the current platform');
 
+  ///{@template flutter_inappwebview_platform_interface.PlatformInAppWebViewController.startExtensions}
+  ///Initializes the ExtensionManager for content blocking and web extensions.
+  ///This method starts the extension loading process asynchronously.
+  ///
+  ///**Officially Supported Platforms/Implementations**:
+  ///- macOS
+  ///{@endtemplate}
+  Future<bool> startExtensions() {
+    throw UnimplementedError(
+        'startExtensions is not implemented on the current platform');
+  }
+
+  ///{@template flutter_inappwebview_platform_interface.PlatformInAppWebViewController.getAllInstalledExtensions}
+  ///Gets all installed extensions with their metadata.
+  ///Returns a list of maps containing extension information like id, name, version, etc.
+  ///
+  ///**Officially Supported Platforms/Implementations**:
+  ///- macOS
+  ///{@endtemplate}
+  Future<List<Map<String, dynamic>>> getAllInstalledExtensions() {
+    throw UnimplementedError(
+        'getAllInstalledExtensions is not implemented on the current platform');
+  }
+
+  ///{@template flutter_inappwebview_platform_interface.PlatformInAppWebViewController.openExtensionPopup}
+  ///Opens the popup for a specific extension programmatically.
+  ///
+  ///**Parameters:**
+  ///- [extensionId]: The unique identifier of the extension whose popup to open
+  ///
+  ///Returns true if the popup was successfully opened, false otherwise.
+  ///
+  ///**Officially Supported Platforms/Implementations**:
+  ///- macOS
+  ///{@endtemplate}
+  Future<bool> openExtensionPopup(String extensionId) {
+    throw UnimplementedError(
+        'openExtensionPopup is not implemented on the current platform');
+  }
+
+  ///{@template flutter_inappwebview_platform_interface.PlatformInAppWebViewController.setExtensionEnabled}
+  ///Enables or disables an installed extension identified by [extensionId].
+  ///
+  ///Returns `true` when the operation succeeds, otherwise `false`.
+  ///
+  ///**Officially Supported Platforms/Implementations**:
+  ///- macOS
+  ///{@endtemplate}
+  Future<bool> setExtensionEnabled(String extensionId, bool isEnabled) {
+    throw UnimplementedError(
+        'setExtensionEnabled is not implemented on the current platform');
+  }
+
+  ///{@template flutter_inappwebview_platform_interface.PlatformInAppWebViewController.getExtensionsDirectoryPath}
+  ///Gets the path to the directory where extensions are stored.
+  ///
+  ///**Officially Supported Platforms/Implementations**:
+  ///- macOS
+  ///{@endtemplate}
+  Future<String> getExtensionsDirectoryPath() {
+    throw UnimplementedError(
+        'getExtensionsDirectoryPath is not implemented on the current platform');
+  }
+
   ///{@template flutter_inappwebview_platform_interface.PlatformInAppWebViewController.setOptions}
   ///Use [setSettings] instead.
   ///{@endtemplate}

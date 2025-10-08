@@ -62,9 +62,14 @@ public class InAppWebView: WKWebView, WKUIDelegate,
     private var selectedDownloadDestinations: [URL: URL] = [:]
     
     public override var acceptsFirstResponder: Bool { return true }
-    
+
+    let extensionManager = ExtensionManager.shared
+
     init(id: Any?, plugin: InAppWebViewFlutterPlugin?, frame: CGRect, configuration: WKWebViewConfiguration,
          userScripts: [UserScript] = []) {
+
+        extensionManager.applyExtensions(to: configuration)
+
         super.init(frame: frame, configuration: configuration)
         self.id = id
         self.plugin = plugin
@@ -76,10 +81,20 @@ public class InAppWebView: WKWebView, WKUIDelegate,
         self.initialUserScripts = userScripts
         uiDelegate = self
         navigationDelegate = self
+
+        // Needed to show extensions popup
+        if let webViewId = id {
+            self.extensionManager.registerWebView(self, id: String(describing: webViewId))
+        }
     }
     
     required public init(coder aDecoder: NSCoder) {
         super.init(coder: aDecoder)!
+    }
+
+    public override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        extensionManager.updateWindow(for: self, window: window)
     }
 
     public func prepare() {
@@ -436,7 +451,6 @@ public class InAppWebView: WKWebView, WKUIDelegate,
             : currentIndex + steps >= 0
     }
     
-    @available(macOS 10.13, *)
     public func takeScreenshot (with: [String: Any?]?, completionHandler: @escaping (_ screenshot: Data?) -> Void) {
         var snapshotConfiguration: WKSnapshotConfiguration? = nil
         if let with = with {
@@ -477,7 +491,6 @@ public class InAppWebView: WKWebView, WKUIDelegate,
         })
     }
     
-    @available(macOS 11.0, *)
     public func createPdf (configuration: [String: Any?]?, completionHandler: @escaping (_ pdf: Data?) -> Void) {
         let pdfConfiguration: WKPDFConfiguration = .init()
         if let configuration = configuration {
@@ -498,7 +511,7 @@ public class InAppWebView: WKWebView, WKUIDelegate,
         }
     }
     
-    @available(macOS 11.0, *)
+    
     public func createWebArchiveData (dataCompletionHandler: @escaping (_ webArchiveData: Data?) -> Void) {
         createWebArchiveData(completionHandler: { (result) in
             switch (result) {
@@ -513,7 +526,7 @@ public class InAppWebView: WKWebView, WKUIDelegate,
         })
     }
     
-    @available(macOS 11.0, *)
+    
     public func saveWebArchive (filePath: String, autoname: Bool, completionHandler: @escaping (_ path: String?) -> Void) {
         createWebArchiveData(dataCompletionHandler: { (webArchiveData) in
             if let webArchiveData = webArchiveData {
@@ -953,7 +966,6 @@ public class InAppWebView: WKWebView, WKUIDelegate,
         }
     }
     
-    @available(macOS 11.0, *)
     public func injectDeferredObject(source: String, contentWorld: WKContentWorld, withWrapper jsWrapper: String?, completionHandler: ((Any?) -> Void)? = nil) {
         var jsToInject = source
         if let wrapper = jsWrapper {
@@ -1009,7 +1021,7 @@ public class InAppWebView: WKWebView, WKUIDelegate,
     }
 #endif
     
-    @available(macOS 11.0, *)
+    
     public func evaluateJavaScript(_ javaScript: String, frame: WKFrameInfo? = nil, contentWorld: WKContentWorld, completionHandler: ((Result<Any, Error>) -> Void)? = nil) {
         if let applePayAPIEnabled = settings?.applePayAPIEnabled, applePayAPIEnabled {
             return
@@ -1021,12 +1033,10 @@ public class InAppWebView: WKWebView, WKUIDelegate,
         injectDeferredObject(source: source, withWrapper: nil, completionHandler: completionHandler)
     }
     
-    @available(macOS 11.0, *)
     public func evaluateJavascript(source: String, contentWorld: WKContentWorld, completionHandler: ((Any?) -> Void)? = nil) {
         injectDeferredObject(source: source, contentWorld: contentWorld, withWrapper: nil, completionHandler: completionHandler)
     }
     
-    @available(macOS 11.0, *)
     public func callAsyncJavaScript(_ functionBody: String, arguments: [String : Any] = [:], frame: WKFrameInfo? = nil, contentWorld: WKContentWorld, completionHandler: ((Result<Any, Error>) -> Void)? = nil) {
         if let applePayAPIEnabled = settings?.applePayAPIEnabled, applePayAPIEnabled {
             return
@@ -1034,7 +1044,6 @@ public class InAppWebView: WKWebView, WKUIDelegate,
         super.callAsyncJavaScript(functionBody, arguments: arguments, in: frame, in: contentWorld, completionHandler: completionHandler)
     }
     
-    @available(macOS 11.0, *)
     public func callAsyncJavaScript(functionBody: String, arguments: [String:Any], contentWorld: WKContentWorld, completionHandler: ((Any?) -> Void)? = nil) {
         let jsToInject = configuration.userContentController.generateCodeForScriptEvaluation(scriptMessageHandler: self, source: functionBody, contentWorld: contentWorld)
         
@@ -1222,7 +1231,7 @@ public class InAppWebView: WKWebView, WKUIDelegate,
         return result;
     }
 
-    @available(macOS 12.0, *)
+    
     public func webView(_ webView: WKWebView,
                         requestMediaCapturePermissionFor origin: WKSecurityOrigin,
                         initiatedByFrame frame: WKFrameInfo,
@@ -1267,7 +1276,6 @@ public class InAppWebView: WKWebView, WKUIDelegate,
         }
     }
     
-    @available(macOS 10.15, *)
     public func webView(_ webView: WKWebView,
                  decidePolicyFor navigationAction: WKNavigationAction,
                  preferences: WKWebpagePreferences,
@@ -1285,7 +1293,7 @@ public class InAppWebView: WKWebView, WKUIDelegate,
         })
     }
     
-    @available(macOS 11.3, *)
+    
     public func download(_ download: WKDownload, decideDestinationUsing response: URLResponse, suggestedFilename: String, completionHandler: @escaping (URL?) -> Void) {
         if let url = response.url, url.absoluteString.hasPrefix("blob:") {
             // For blob downloads, show save panel to let user choose location
@@ -1425,17 +1433,14 @@ public class InAppWebView: WKWebView, WKUIDelegate,
         }
     }
     
-    @available(macOS 11.3, *)
     public func webView(_ webView: WKWebView, navigationAction: WKNavigationAction, didBecome download: WKDownload) {
         download.delegate = self
     }
     
-    @available(macOS 11.3, *)
     public func webView(_ webView: WKWebView, navigationResponse: WKNavigationResponse, didBecome download: WKDownload) {
         download.delegate = self       
     }
     
-    @available(macOS 11.3, *)
     public func downloadDidFinish(_ download: WKDownload) {
         // Handle completion for blob downloads that use filePathDestination
         if let destination = filePathDestination {
@@ -1471,7 +1476,6 @@ public class InAppWebView: WKWebView, WKUIDelegate,
         }
     }
     
-    @available(macOS 11.3, *)
     public func download(_ download: WKDownload, didFailWithError error: Error, resumeData: Data?) {
         // This method is called when WKDownload fails, but we handle errors in URLSession delegate
         // No need to do anything here as our startTrackedDownload handles everything
@@ -1898,7 +1902,6 @@ public class InAppWebView: WKWebView, WKUIDelegate,
         return identityAndTrust;
     }
     
-    @available(macOS 10.12, *)
     public func webView(
         _ webView: WKWebView,
         runOpenPanelWith parameters: WKOpenPanelParameters,
@@ -2836,12 +2839,12 @@ if(window.\(JavaScriptBridgeJS.get_JAVASCRIPT_BRIDGE_NAME())[\(_callHandlerID)] 
         }
     }
     
-    @available(macOS 12.0, *)
+    
     public func saveState() -> Data? {
         return interactionState is NSData || interactionState is Data ? interactionState as? Data : nil
     }
     
-    @available(macOS 12.0, *)
+    
     public func restoreState(state: Data) {
         interactionState = state
     }
@@ -2854,7 +2857,13 @@ if(window.\(JavaScriptBridgeJS.get_JAVASCRIPT_BRIDGE_NAME())[\(_callHandlerID)] 
         windowBeforeCreatedCallbacks.removeAll()
     }
     
+    
     public func dispose() {
+        // Unregister this WebView from extension system
+        if let webViewId = id {
+            self.extensionManager.unregisterWebView(id: String(describing: webViewId))
+        }
+
         channelDelegate?.dispose()
         channelDelegate = nil
         runWindowBeforeCreatedCallbacks()

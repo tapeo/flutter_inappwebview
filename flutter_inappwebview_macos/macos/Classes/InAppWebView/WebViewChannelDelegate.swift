@@ -681,6 +681,23 @@ public class WebViewChannelDelegate: ChannelDelegate {
                 result(false)
             }
             break
+        case .startExtensions:
+            Task {
+                let success = await ExtensionManager.prepareExtensionSystem()
+                result(success)
+            }
+            break
+        case .openExtensionPopup:
+            guard let webView = webView else {
+                result(false)
+                break
+            }
+            let extensionId = arguments!["extensionId"] as! String
+            Task { @MainActor in
+                let success = webView.extensionManager.openExtensionPopup(for: extensionId)
+                result(success)
+            }
+            break
         }
     }
     

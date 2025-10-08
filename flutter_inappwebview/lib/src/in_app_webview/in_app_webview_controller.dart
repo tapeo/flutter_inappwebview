@@ -622,6 +622,25 @@ class InAppWebViewController {
   static Future<String> get tRexRunnerCss =>
       PlatformInAppWebViewController.static().tRexRunnerCss;
 
+  static Future<bool> startExtensions() =>
+      PlatformInAppWebViewController.static().startExtensions();
+
+  static Future<List<Map<String, dynamic>>> getAllInstalledExtensions() =>
+      PlatformInAppWebViewController.static().getAllInstalledExtensions();
+
+  static Future<bool> setExtensionEnabled(
+    String extensionId,
+    bool isEnabled,
+  ) =>
+      PlatformInAppWebViewController.static()
+          .setExtensionEnabled(extensionId, isEnabled);
+
+  static Future<String> getExtensionsDirectoryPath() =>
+      PlatformInAppWebViewController.static().getExtensionsDirectoryPath();
+
+  Future<bool> openExtensionPopup(String extensionId) =>
+      platform.openExtensionPopup(extensionId);
+
   ///{@macro flutter_inappwebview_platform_interface.PlatformInAppWebViewController.getViewId}
   dynamic getViewId() => platform.getViewId();
 

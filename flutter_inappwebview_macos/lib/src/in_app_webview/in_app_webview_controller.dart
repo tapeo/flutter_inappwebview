@@ -2806,6 +2806,55 @@ class MacOSInAppWebViewController extends PlatformInAppWebViewController
     }
   }
 
+  @override
+  Future<bool> startExtensions() async {
+    Map<String, dynamic> args = <String, dynamic>{};
+    var result = await _staticChannel.invokeMethod('startExtensions', args);
+    return result ?? false;
+  }
+
+  @override
+  Future<List<Map<String, dynamic>>> getAllInstalledExtensions() async {
+    Map<String, dynamic> args = <String, dynamic>{};
+    var result =
+        await _staticChannel.invokeMethod('getAllInstalledExtensions', args);
+
+    if (result == null) return [];
+
+    // Convert the result to the proper type
+    final List<dynamic> resultList = List<dynamic>.from(result);
+    return resultList
+        .map((item) => Map<String, dynamic>.from(item as Map))
+        .toList();
+  }
+
+  @override
+  Future<bool> setExtensionEnabled(String extensionId, bool isEnabled) async {
+    Map<String, dynamic> args = <String, dynamic>{
+      'extensionId': extensionId,
+      'isEnabled': isEnabled,
+    };
+    var result = await _staticChannel.invokeMethod('setExtensionEnabled', args);
+    return result ?? false;
+  }
+
+  @override
+  Future<String> getExtensionsDirectoryPath() async {
+    Map<String, dynamic> args = <String, dynamic>{};
+    var result =
+        await _staticChannel.invokeMethod('getExtensionsDirectoryPath', args);
+    return result ?? '';
+  }
+
+  @override
+  Future<bool> openExtensionPopup(String extensionId) async {
+    Map<String, dynamic> args = <String, dynamic>{
+      'extensionId': extensionId,
+    };
+    var result = await channel?.invokeMethod('openExtensionPopup', args);
+    return result ?? false;
+  }
+
   /// The callback set by the user to decide whether to proceed with a download.
   ShouldProceedWithDownloadCallback? onDownloadStartRequest;
 }
