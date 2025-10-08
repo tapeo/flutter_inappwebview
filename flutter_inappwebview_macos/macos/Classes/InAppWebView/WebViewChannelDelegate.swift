@@ -694,6 +694,9 @@ public class WebViewChannelDelegate: ChannelDelegate {
             }
             let extensionId = arguments!["extensionId"] as! String
             Task { @MainActor in
+                if #available(macOS 15.4, *) {
+                    webView.extensionManager.markWebViewActive(webView)
+                }
                 let success = webView.extensionManager.openExtensionPopup(for: extensionId)
                 result(success)
             }
