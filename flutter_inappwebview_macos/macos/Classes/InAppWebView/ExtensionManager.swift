@@ -18,6 +18,18 @@ final class ExtensionManager: NSObject, ObservableObject, WKWebExtensionControll
         weak var value: WKWebView?
     }
 
+    private struct InstalledSafariExtensionMetadata {
+        let name: String
+        let path: String
+        let iconBase64: String?
+        let description: String?
+    }
+
+    private struct DiscoveredSafariExtension {
+        let bundleURL: URL
+        let metadata: InstalledSafariExtensionMetadata
+    }
+
     private static let commonPermissions: [WKWebExtension.Permission] = [
         .storage,
         .tabs,
@@ -46,6 +58,7 @@ final class ExtensionManager: NSObject, ObservableObject, WKWebExtensionControll
     private var didNotifyWindowOpen = false
     private var acknowledgedTabs: Set<String> = []
     private let popupManager = ExtensionPopupWindowManager.shared
+    private var extensionMetadata: [String: InstalledSafariExtensionMetadata] = [:]
 
     var extensionController: WKWebExtensionController? { controller }
     var extensionContext: WKWebExtensionContext? { controller?.extensionContexts.first }
@@ -244,22 +257,32 @@ final class ExtensionManager: NSObject, ObservableObject, WKWebExtensionControll
         contexts.map { context in
             let webExtension = context.webExtension
             let action = context.action(for: nil)
+            let metadata = extensionMetadata[context.uniqueIdentifier]
             let resolvedName = webExtension.displayName
                 ?? webExtension.displayShortName
                 ?? action?.label
+                ?? metadata?.name
                 ?? "Unknown"
             let resolvedVersion = webExtension.displayVersion
                 ?? webExtension.version
                 ?? "Unknown"
+            let resolvedDescription = webExtension.displayDescription
+                ?? metadata?.description
+                ?? ""
 
-            return [
+            var data: [String: Any] = [
                 "id": context.uniqueIdentifier,
                 "name": resolvedName,
                 "version": resolvedVersion,
                 "isLoaded": context.isLoaded,
                 "hasPopup": action?.presentsPopup ?? false,
-                "description": webExtension.displayDescription ?? ""
+                "description": resolvedDescription
             ]
+
+            if let path = metadata?.path { data["path"] = path }
+            if let iconBase64 = metadata?.iconBase64 { data["icon"] = iconBase64 }
+
+            return data
         }
     }
 
@@ -452,51 +475,19 @@ func getExtensionsDirectoryPath() -> String {
 
     @MainActor
     private func loadExtensionsFromDisk() async throws -> [WKWebExtensionContext] {
-        let userRoot = ExtensionManager.getExtensionsDirectory().appendingPathComponent("Folders")
-        let bundleRoot = ExtensionManager.getExtensionsDirectory().appendingPathComponent("Bundles")
         var contexts: [WKWebExtensionContext] = []
-        let fm = FileManager.default
-
         var loadedIdentifiers: Set<String> = []
-       
-        // process folders only
-        let userContents = try? fm.contentsOfDirectory(at: userRoot, includingPropertiesForKeys: [.isDirectoryKey], options: .skipsHiddenFiles)
-        for entry in userContents ?? [] {
-            let manifestURL = entry.appendingPathComponent("manifest.json")
-            guard fm.fileExists(atPath: manifestURL.path) else { continue }
+        extensionMetadata.removeAll()
 
-            do {
-                let webExtension = try await WKWebExtension(resourceBaseURL: entry)
-                let context = WKWebExtensionContext(for: webExtension)
+        let installed = await loadInstalledSafariExtensionContexts()
+        contexts.append(contentsOf: installed.contexts)
+        extensionMetadata.merge(installed.metadata) { current, _ in current }
+        loadedIdentifiers.formUnion(installed.identifiers)
 
-                let id = context.uniqueIdentifier
-                if loadedIdentifiers.contains(id) { continue }
-                loadedIdentifiers.insert(id)
-
-                grantPermissions(to: context, for: webExtension)
-                contexts.append(context)
-            } catch {
-                print("[ExtensionManager] Failed to load folder extension from \(entry.path): \(error)")
-            }
-        }
-
-        // process bundles only
-        let bundleContents = try? fm.contentsOfDirectory(at: bundleRoot, includingPropertiesForKeys: [.isDirectoryKey], options: .skipsHiddenFiles)
-        for entry in bundleContents ?? [] {
-            do {
-                let webExtension = try await WKWebExtension(appExtensionBundle: Bundle(url: entry)!)
-                let context = WKWebExtensionContext(for: webExtension)
-
-                let id = context.uniqueIdentifier
-                if loadedIdentifiers.contains(id) { continue }
-                loadedIdentifiers.insert(id)
-
-                grantPermissions(to: context, for: webExtension)
-                contexts.append(context)
-            } catch {
-                print("[ExtensionManager] Failed to load bundle extension from \(entry.path): \(error)")
-            }
-        }
+        let legacy = await loadLegacyExtensionContexts(excluding: loadedIdentifiers)
+        contexts.append(contentsOf: legacy.contexts)
+        extensionMetadata.merge(legacy.metadata) { current, _ in current }
+        loadedIdentifiers.formUnion(legacy.identifiers)
 
         return contexts
     }
@@ -626,5 +617,249 @@ func getExtensionsDirectoryPath() -> String {
     static func getExtensionsDirectory() -> URL {
         let support = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
         return support.appendingPathComponent("Pola").appendingPathComponent("Extensions")
+    }
+
+    // MARK: - Safari extension discovery
+
+    private func loadInstalledSafariExtensionContexts() async -> (contexts: [WKWebExtensionContext], metadata: [String: InstalledSafariExtensionMetadata], identifiers: Set<String>) {
+        var contexts: [WKWebExtensionContext] = []
+        var metadata: [String: InstalledSafariExtensionMetadata] = [:]
+        var identifiers: Set<String> = []
+
+        for discoveredExtension in discoverInstalledSafariExtensions() {
+            do {
+                guard let bundle = Bundle(url: discoveredExtension.bundleURL) else {
+                    continue
+                }
+
+                let webExtension = try await WKWebExtension(appExtensionBundle: bundle)
+                let context = WKWebExtensionContext(for: webExtension)
+
+                let identifier = context.uniqueIdentifier
+                if identifiers.contains(identifier) { continue }
+                identifiers.insert(identifier)
+
+                metadata[identifier] = discoveredExtension.metadata
+
+                grantPermissions(to: context, for: webExtension)
+                contexts.append(context)
+            } catch {
+                print("[ExtensionManager] Failed to load installed extension from \(discoveredExtension.bundleURL.path): \(error)")
+            }
+        }
+
+        return (contexts, metadata, identifiers)
+    }
+
+    private func loadLegacyExtensionContexts(excluding existingIdentifiers: Set<String>) async -> (contexts: [WKWebExtensionContext], metadata: [String: InstalledSafariExtensionMetadata], identifiers: Set<String>) {
+        var contexts: [WKWebExtensionContext] = []
+        var metadata: [String: InstalledSafariExtensionMetadata] = [:]
+        var identifiers: Set<String> = []
+        let fm = FileManager.default
+
+        let userRoot = ExtensionManager.getExtensionsDirectory().appendingPathComponent("Folders")
+        let bundleRoot = ExtensionManager.getExtensionsDirectory().appendingPathComponent("Bundles")
+
+        // Load folder-based extensions (unpacked)
+        if let userContents = try? fm.contentsOfDirectory(at: userRoot, includingPropertiesForKeys: [.isDirectoryKey], options: .skipsHiddenFiles) {
+            for entry in userContents {
+                let manifestURL = entry.appendingPathComponent("manifest.json")
+                guard fm.fileExists(atPath: manifestURL.path) else { continue }
+
+                do {
+                    let webExtension = try await WKWebExtension(resourceBaseURL: entry)
+                    let context = WKWebExtensionContext(for: webExtension)
+                    let identifier = context.uniqueIdentifier
+                    if existingIdentifiers.contains(identifier) || identifiers.contains(identifier) { continue }
+
+                    identifiers.insert(identifier)
+                    grantPermissions(to: context, for: webExtension)
+
+                    let name = webExtension.displayName
+                        ?? webExtension.displayShortName
+                        ?? entry.lastPathComponent
+
+                    let description = trimmedNonEmpty(webExtension.displayDescription)
+
+                    metadata[identifier] = InstalledSafariExtensionMetadata(
+                        name: name,
+                        path: entry.path,
+                        iconBase64: nil,
+                        description: description
+                    )
+
+                    contexts.append(context)
+                } catch {
+                    print("[ExtensionManager] Failed to load folder extension from \(entry.path): \(error)")
+                }
+            }
+        }
+
+        // Load bundled extensions (.appex bundles placed by user)
+        if let bundleContents = try? fm.contentsOfDirectory(at: bundleRoot, includingPropertiesForKeys: [.isDirectoryKey], options: .skipsHiddenFiles) {
+            for entry in bundleContents {
+                guard entry.pathExtension == "appex" else { continue }
+                do {
+                    guard let bundle = Bundle(url: entry) else { continue }
+                    let webExtension = try await WKWebExtension(appExtensionBundle: bundle)
+                    let context = WKWebExtensionContext(for: webExtension)
+                    let identifier = context.uniqueIdentifier
+                    if existingIdentifiers.contains(identifier) || identifiers.contains(identifier) { continue }
+
+                    identifiers.insert(identifier)
+                    grantPermissions(to: context, for: webExtension)
+
+                    let name = webExtension.displayName
+                        ?? webExtension.displayShortName
+                        ?? entry.deletingPathExtension().lastPathComponent
+
+                    let description = trimmedNonEmpty(webExtension.displayDescription)
+
+                    let metadataEntry = InstalledSafariExtensionMetadata(
+                        name: name,
+                        path: entry.path,
+                        iconBase64: loadIconBase64(forExtensionAt: entry),
+                        description: description
+                    )
+
+                    metadata[identifier] = metadataEntry
+                    contexts.append(context)
+                } catch {
+                    print("[ExtensionManager] Failed to load bundle extension from \(entry.path): \(error)")
+                }
+            }
+        }
+
+        return (contexts, metadata, identifiers)
+    }
+
+    private func discoverInstalledSafariExtensions() -> [DiscoveredSafariExtension] {
+        let fileManager = FileManager.default
+        var discovered: [DiscoveredSafariExtension] = []
+        var seenPaths = Set<String>()
+
+        for directory in safariApplicationDirectories() {
+            guard fileManager.fileExists(atPath: directory.path) else { continue }
+
+            guard let enumerator = fileManager.enumerator(
+                at: directory,
+                includingPropertiesForKeys: [.isDirectoryKey],
+                options: [.skipsHiddenFiles, .skipsPackageDescendants]
+            ) else {
+                continue
+            }
+
+            for case let fileURL as URL in enumerator where fileURL.pathExtension == "app" {
+                for extensionInfo in safariExtensions(inAppBundle: fileURL) {
+                    let path = extensionInfo.bundleURL.path
+                    guard !seenPaths.contains(path) else { continue }
+                    seenPaths.insert(path)
+                    discovered.append(extensionInfo)
+                }
+            }
+        }
+
+        return discovered
+    }
+
+    private func safariApplicationDirectories() -> [URL] {
+        var directories: [URL] = [
+            URL(fileURLWithPath: "/Applications", isDirectory: true),
+            URL(fileURLWithPath: "/Applications/Utilities", isDirectory: true),
+            URL(fileURLWithPath: "/System/Applications", isDirectory: true),
+            URL(fileURLWithPath: "/System/Library/CoreServices", isDirectory: true)
+        ]
+
+        if let userApplications = FileManager.default.urls(for: .applicationDirectory, in: .userDomainMask).first {
+            directories.append(userApplications)
+        }
+
+        return directories
+    }
+
+    private func safariExtensions(inAppBundle appURL: URL) -> [DiscoveredSafariExtension] {
+        let plugInsURL = appURL.appendingPathComponent("Contents/PlugIns", isDirectory: true)
+        let fileManager = FileManager.default
+
+        guard fileManager.fileExists(atPath: plugInsURL.path) else { return [] }
+
+        guard let plugInContents = try? fileManager.contentsOfDirectory(
+            at: plugInsURL,
+            includingPropertiesForKeys: nil,
+            options: [.skipsHiddenFiles]
+        ) else { return [] }
+
+        return plugInContents.compactMap { extensionBundleURL in
+            guard extensionBundleURL.pathExtension == "appex" else { return nil }
+            guard let metadata = extensionMetadata(forExtensionBundleAt: extensionBundleURL) else { return nil }
+            return DiscoveredSafariExtension(bundleURL: extensionBundleURL, metadata: metadata)
+        }
+    }
+
+    private func extensionMetadata(forExtensionBundleAt bundleURL: URL) -> InstalledSafariExtensionMetadata? {
+        let infoPlistURL = bundleURL.appendingPathComponent("Contents/Info.plist")
+
+        guard
+            let infoPlist = NSDictionary(contentsOf: infoPlistURL) as? [String: Any],
+            let extensionDictionary = infoPlist["NSExtension"] as? [String: Any],
+            let extensionPointIdentifier = extensionDictionary["NSExtensionPointIdentifier"] as? String,
+            extensionPointIdentifier.hasPrefix("com.apple.Safari")
+        else {
+            return nil
+        }
+
+        let name = (infoPlist["CFBundleDisplayName"] as? String)
+            ?? (infoPlist["CFBundleName"] as? String)
+            ?? bundleURL.deletingPathExtension().lastPathComponent
+
+        let iconBase64 = loadIconBase64(forExtensionAt: bundleURL)
+
+        let descriptionFromPlist = infoPlist["NSHumanReadableDescription"] as? String
+        let description = trimmedNonEmpty(descriptionFromPlist)
+            ?? loadManifestDescription(forExtensionAt: bundleURL)
+
+        return InstalledSafariExtensionMetadata(
+            name: name,
+            path: bundleURL.path,
+            iconBase64: iconBase64,
+            description: description
+        )
+    }
+
+    private func loadIconBase64(forExtensionAt bundleURL: URL) -> String? {
+        let icon = NSWorkspace.shared.icon(forFile: bundleURL.path)
+        icon.size = NSSize(width: 64, height: 64)
+
+        guard
+            let tiffData = icon.tiffRepresentation,
+            let bitmap = NSBitmapImageRep(data: tiffData),
+            let pngData = bitmap.representation(using: .png, properties: [:])
+        else {
+            return nil
+        }
+
+        return pngData.base64EncodedString()
+    }
+
+    private func loadManifestDescription(forExtensionAt bundleURL: URL) -> String? {
+        let manifestURL = bundleURL.appendingPathComponent("Contents/Resources/manifest.json")
+
+        guard
+            let data = try? Data(contentsOf: manifestURL),
+            let jsonObject = try? JSONSerialization.jsonObject(with: data, options: []),
+            let manifest = jsonObject as? [String: Any],
+            let description = manifest["description"] as? String
+        else {
+            return nil
+        }
+
+        return trimmedNonEmpty(description)
+    }
+
+    private func trimmedNonEmpty(_ value: String?) -> String? {
+        guard let value = value?.trimmingCharacters(in: .whitespacesAndNewlines), !value.isEmpty else {
+            return nil
+        }
+        return value
     }
 }
