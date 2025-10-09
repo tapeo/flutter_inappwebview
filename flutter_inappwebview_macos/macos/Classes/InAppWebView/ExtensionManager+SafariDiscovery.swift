@@ -218,7 +218,8 @@ extension ExtensionManager {
             let infoPlist = NSDictionary(contentsOf: infoPlistURL) as? [String: Any],
             let extensionDictionary = infoPlist["NSExtension"] as? [String: Any],
             let extensionPointIdentifier = extensionDictionary["NSExtensionPointIdentifier"] as? String,
-            extensionPointIdentifier.hasPrefix("com.apple.Safari")
+            extensionPointIdentifier.hasPrefix("com.apple.Safari"),
+            extensionPointIdentifier.contains("web-extension")
         else {
             return nil
         }
