@@ -187,6 +187,17 @@ abstract class PlatformInAppWebViewController extends PlatformInterface
         'getProgress is not implemented on the current platform');
   }
 
+  ///{@template flutter_inappwebview_platform_interface.PlatformInAppWebViewController.getDownloadedFilePath}
+  ///Returns the saved file system path of the most recent completed download that originated from the provided [url], if available.
+  ///
+  ///**Officially Supported Platforms/Implementations**:
+  ///- MacOS
+  ///{@endtemplate}
+  Future<String?> getDownloadedFilePath(WebUri url) {
+    throw UnimplementedError(
+        'getDownloadedFilePath is not implemented on the current platform');
+  }
+
   ///{@template flutter_inappwebview_platform_interface.PlatformInAppWebViewController.getHtml}
   ///Gets the content html of the page. It first tries to get the content through javascript.
   ///If this doesn't work, it tries to get the content reading the file:

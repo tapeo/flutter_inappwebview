@@ -41,16 +41,21 @@ public class FindElementsAtPointJS {
             var element = document.elementFromPoint(x, y);
             var data = {
                 type: 0,
-                extra: null
+                extra: null,
+                linkUrl: null,
+                imageUrl: null
             };
             while (element) {
                 if (element.tagName === 'IMG' && element.src) {
                     if (element.parentNode && element.parentNode.tagName === 'A' && element.parentNode.href) {
                         data.type = hitTestResultType.SRC_IMAGE_ANCHOR_TYPE;
+                        data.linkUrl = element.parentNode.href;
+                        data.extra = element.parentNode.href;
                     } else {
                         data.type = hitTestResultType.IMAGE_TYPE;
+                        data.extra = element.src;
                     }
-                    data.extra = element.src;
+                    data.imageUrl = element.src;
                     break;
                 } else if (element.tagName === 'A' && element.href) {
                     if (element.href.indexOf('mailto:') === 0) {
@@ -65,6 +70,9 @@ public class FindElementsAtPointJS {
                     } else {
                         data.type = hitTestResultType.SRC_ANCHOR_TYPE;
                         data.extra = element.href;
+                    }
+                    if (!data.linkUrl && element.href) {
+                        data.linkUrl = element.href;
                     }
                     break;
                 } else if (

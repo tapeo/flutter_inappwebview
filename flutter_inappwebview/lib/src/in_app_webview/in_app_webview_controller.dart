@@ -49,6 +49,10 @@ class InAppWebViewController {
   ///{@macro flutter_inappwebview_platform_interface.PlatformInAppWebViewController.getProgress}
   Future<int?> getProgress() => platform.getProgress();
 
+  ///{@macro flutter_inappwebview_platform_interface.PlatformInAppWebViewController.getDownloadedFilePath}
+  Future<String?> getDownloadedFilePath(WebUri url) =>
+      platform.getDownloadedFilePath(url);
+
   ///{@macro flutter_inappwebview_platform_interface.PlatformInAppWebViewController.getHtml}
   Future<String?> getHtml() => platform.getHtml();
 

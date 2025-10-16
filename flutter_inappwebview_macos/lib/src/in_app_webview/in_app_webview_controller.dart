@@ -1637,6 +1637,12 @@ class MacOSInAppWebViewController extends PlatformInAppWebViewController
   }
 
   @override
+  Future<String?> getDownloadedFilePath(WebUri url) async {
+    Map<String, dynamic> args = <String, dynamic>{'url': url.toString()};
+    return await channel?.invokeMethod<String?>('getDownloadedFilePath', args);
+  }
+
+  @override
   Future<String?> getHtml() async {
     String? html;
 

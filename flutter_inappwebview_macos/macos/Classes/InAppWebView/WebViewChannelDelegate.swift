@@ -35,6 +35,13 @@ public class WebViewChannelDelegate: ChannelDelegate {
         case .getProgress:
             result( (webView != nil) ? Int(webView!.estimatedProgress * 100) : nil )
             break
+        case .getDownloadedFilePath:
+            if let urlString = arguments?["url"] as? String {
+                result(webView?.getDownloadedFilePath(for: urlString))
+            } else {
+                result(nil)
+            }
+            break
         case .loadUrl:
             let urlRequest = arguments!["urlRequest"] as! [String:Any?]
             let allowingReadAccessTo = arguments!["allowingReadAccessTo"] as? String

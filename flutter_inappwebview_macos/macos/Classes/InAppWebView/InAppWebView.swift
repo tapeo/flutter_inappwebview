@@ -30,8 +30,6 @@ public class InAppWebView: WKWebView, WKUIDelegate,
     var currentOriginalUrl: URL?
     var inFullscreen = false
     private var printJobCompletionHandler: PrintJobController.CompletionHandler?
-    private var filePathDestination: URL?
-    
     static var sslCertificatesMap: [String: SslCertificate] = [:] // [URL host name : SslCertificate]
     static var credentialsProposed: [URLCredential] = []
     
@@ -57,9 +55,50 @@ public class InAppWebView: WKWebView, WKUIDelegate,
     
     // 1. Add URLSession and download tracking properties to InAppWebView
     private var urlSession: URLSession?
-    private var activeDownloadTasks: [URL: URLSessionDownloadTask] = [:]
-    private var activeDownloadProgress: [URL: Double] = [:]
-    private var selectedDownloadDestinations: [URL: URL] = [:]
+    private var activeSessionDownloads: [ObjectIdentifier: URLSessionDownloadTask] = [:]
+    private var sessionDownloadInfo: [ObjectIdentifier: SessionDownloadInfo] = [:]
+    private var activeWKDownloads: [ObjectIdentifier: WKDownloadInfo] = [:]
+    private var completedDownloadPaths: [String: URL] = [:]
+    
+    private class WKDownloadInfo {
+        let destinationURL: URL
+        let suggestedFilename: String
+        let originalUrl: String?
+        var mimeType: String?
+        var expectedBytes: Int64?
+        var downloadedBytes: Int64 = 0
+        var contentDisposition: String?
+        var textEncodingName: String?
+        var progressObservation: NSKeyValueObservation?
+        
+        init(destinationURL: URL,
+             suggestedFilename: String,
+             originalUrl: String?) {
+            self.destinationURL = destinationURL
+            self.suggestedFilename = suggestedFilename
+            self.originalUrl = originalUrl
+        }
+    }
+    
+    private class SessionDownloadInfo {
+        let destinationURL: URL
+        let suggestedFilename: String?
+        let originalUrl: URL
+        var mimeType: String?
+        var expectedBytes: Int64?
+        var downloadedBytes: Int64 = 0
+        var contentDisposition: String?
+        var textEncodingName: String?
+        var userAgent: String?
+        
+        init(destinationURL: URL,
+             suggestedFilename: String?,
+             originalUrl: URL) {
+            self.destinationURL = destinationURL
+            self.suggestedFilename = suggestedFilename
+            self.originalUrl = originalUrl
+        }
+    }
     
     public override var acceptsFirstResponder: Bool { return true }
 
@@ -1295,63 +1334,149 @@ public class InAppWebView: WKWebView, WKUIDelegate,
     
     
     public func download(_ download: WKDownload, decideDestinationUsing response: URLResponse, suggestedFilename: String, completionHandler: @escaping (URL?) -> Void) {
-        if let url = response.url, url.absoluteString.hasPrefix("blob:") {
-            // For blob downloads, show save panel to let user choose location
-            showSavePanelForDownload(suggestedFilename: suggestedFilename, mimeType: response.mimeType) { [weak self] selectedURL in
-                if let selectedURL = selectedURL {
-                    self?.filePathDestination = selectedURL
-                    completionHandler(selectedURL)
-                } else {
-                    // User cancelled, cancel the download
-                    completionHandler(nil)
-                }
+        showSavePanelForDownload(suggestedFilename: suggestedFilename, mimeType: response.mimeType) { [weak self] selectedURL in
+            guard let self = self else {
+                completionHandler(nil)
+                return
             }
-            return
+            
+            guard let destinationURL = selectedURL else {
+                completionHandler(nil)
+                return
+            }
+            
+            self.prepareWebKitDownload(download, response: response, destinationURL: destinationURL, suggestedFilename: suggestedFilename)
+            completionHandler(destinationURL)
         }
-
-        if let url = response.url {
-            startTrackedDownload(url: url, suggestedFilename: suggestedFilename)
-            completionHandler(nil) // Cancel WKDownload, we handle it ourselves
-            return
-        }
-        completionHandler(nil)
-    }
-
-    private func generateDownloadDestination(with suggestedFilename: String) -> URL? {
-        // Use configured download path or default to Downloads folder
-        let downloadDirectory: URL
-        if let downloadPath = settings?.downloadPath, !downloadPath.isEmpty {
-            downloadDirectory = URL(fileURLWithPath: downloadPath)
-        } else {
-            downloadDirectory = FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask).first ?? FileManager.default.temporaryDirectory
-        }
-        
-        // Create download directory if it doesn't exist
-        do {
-            try FileManager.default.createDirectory(at: downloadDirectory, withIntermediateDirectories: true, attributes: nil)
-        } catch {
-            print("Failed to create download directory: \(error.localizedDescription)")
-            return nil
-        }
-        
-        let fileName = suggestedFilename.isEmpty ? "download" : suggestedFilename
-        let fileURL = downloadDirectory.appendingPathComponent(fileName)
-        
-        // If file already exists, append a number to make it unique
-        var counter = 1
-        var uniqueFileURL = fileURL
-        let fileExtension = fileURL.pathExtension
-        let fileNameWithoutExtension = fileURL.deletingPathExtension().lastPathComponent
-        
-        while FileManager.default.fileExists(atPath: uniqueFileURL.path) {
-            let newFileName = "\(fileNameWithoutExtension)_\(counter).\(fileExtension)"
-            uniqueFileURL = downloadDirectory.appendingPathComponent(newFileName)
-            counter += 1
-        }
-        
-        return uniqueFileURL
     }
     
+    private func prepareWebKitDownload(_ download: WKDownload, response: URLResponse, destinationURL: URL, suggestedFilename: String) {
+        let downloadId = ObjectIdentifier(download)
+        let resolvedSuggestedFilename = suggestedFilename.isEmpty ? destinationURL.lastPathComponent : suggestedFilename
+        let resolvedOriginalURL = download.originalRequest?.url ?? response.url ?? destinationURL
+        
+        let info = WKDownloadInfo(destinationURL: destinationURL, suggestedFilename: resolvedSuggestedFilename, originalUrl: resolvedOriginalURL.absoluteString)
+        info.mimeType = response.mimeType
+        let expectedLength = response.expectedContentLength
+        if expectedLength > 0 {
+            info.expectedBytes = expectedLength
+        }
+        info.textEncodingName = response.textEncodingName
+        if let httpResponse = response as? HTTPURLResponse {
+            info.contentDisposition = contentDispositionHeader(from: httpResponse)
+        }
+        
+        completedDownloadPaths.removeValue(forKey: resolvedOriginalURL.absoluteString)
+        
+        let observation = download.progress.observe(\.fractionCompleted, options: [.new]) { [weak self] progress, _ in
+            DispatchQueue.main.async { [weak self] in
+                guard let self = self,
+                      let info = self.activeWKDownloads[downloadId] else { return }
+                
+                if progress.totalUnitCount > 0 && info.expectedBytes == nil {
+                    info.expectedBytes = progress.totalUnitCount
+                }
+                
+                let downloadedBytes = progress.completedUnitCount
+                info.downloadedBytes = downloadedBytes
+                let totalBytes = info.expectedBytes ?? (progress.totalUnitCount > 0 ? progress.totalUnitCount : -1)
+                let progressValue: Double
+                if totalBytes > 0 {
+                    progressValue = Double(downloadedBytes) / Double(totalBytes)
+                } else {
+                    progressValue = progress.fractionCompleted
+                }
+                
+                let progressUrl = info.originalUrl ?? destinationURL.absoluteString
+                self.channelDelegate?.onDownloadProgress(
+                    url: progressUrl,
+                    progress: progressValue.isFinite ? progressValue : 0,
+                    totalBytes: totalBytes,
+                    downloadedBytes: downloadedBytes
+                )
+            }
+        }
+        
+        info.progressObservation = observation
+        activeWKDownloads[downloadId]?.progressObservation?.invalidate()
+        activeWKDownloads[downloadId] = info
+        
+        let contentLength = info.expectedBytes ?? -1
+        let request = DownloadStartRequest(
+            url: info.originalUrl ?? destinationURL.absoluteString,
+            userAgent: download.originalRequest?.value(forHTTPHeaderField: "User-Agent"),
+            contentDisposition: info.contentDisposition,
+            mimeType: info.mimeType,
+            contentLength: contentLength > 0 ? contentLength : 0,
+            suggestedFilename: info.suggestedFilename,
+            textEncodingName: info.textEncodingName
+        )
+        
+        DispatchQueue.main.async { [weak self] in
+            self?.channelDelegate?.onDownloadStarting(request: request)
+        }
+    }
+    
+    private func contentDispositionHeader(from response: HTTPURLResponse) -> String? {
+        for (key, value) in response.allHeaderFields {
+            if let keyString = key as? String,
+               keyString.caseInsensitiveCompare("Content-Disposition") == .orderedSame {
+                return value as? String
+            }
+        }
+        return nil
+    }
+    
+    private func ensureURLSessionInstance() -> URLSession {
+        if let session = urlSession {
+            return session
+        }
+        let configuration = URLSessionConfiguration.default
+        configuration.httpShouldSetCookies = true
+        configuration.httpCookieAcceptPolicy = .always
+        configuration.waitsForConnectivity = false
+        let session = URLSession(configuration: configuration, delegate: self, delegateQueue: nil)
+        urlSession = session
+        return session
+    }
+    
+    private func prepareDownloadRequest(url: URL, originalRequest: URLRequest? = nil, completion: @escaping (URLRequest) -> Void) {
+        var request = originalRequest ?? URLRequest(url: url)
+        if request.httpMethod == nil {
+            request.httpMethod = "GET"
+        }
+        
+        if request.value(forHTTPHeaderField: "User-Agent") == nil {
+            if let customAgent = customUserAgent, !customAgent.isEmpty {
+                request.setValue(customAgent, forHTTPHeaderField: "User-Agent")
+            } else if let defaultAgent = value(forKey: "userAgent") as? String {
+                request.setValue(defaultAgent, forHTTPHeaderField: "User-Agent")
+            }
+        }
+        
+        configuration.websiteDataStore.httpCookieStore.getAllCookies { [weak self] cookies in
+            guard let self = self else {
+                completion(request)
+                return
+            }
+            if let host = request.url?.host {
+                let filteredCookies = cookies.filter { cookie in
+                    let trimmedDomain = cookie.domain.trimmingCharacters(in: CharacterSet(charactersIn: "."))
+                    guard !trimmedDomain.isEmpty else { return false }
+                    return host == trimmedDomain || host.hasSuffix(".\(trimmedDomain)")
+                }
+                if !filteredCookies.isEmpty {
+                    let headerFields = HTTPCookie.requestHeaderFields(with: filteredCookies)
+                    for (field, value) in headerFields {
+                        request.setValue(value, forHTTPHeaderField: field)
+                    }
+                }
+            }
+            
+            completion(request)
+        }
+    }
+
     // Add file picker support for downloads
     private func showSavePanelForDownload(suggestedFilename: String, mimeType: String?, completion: @escaping (URL?) -> Void) {
         DispatchQueue.main.async {
@@ -1441,44 +1566,110 @@ public class InAppWebView: WKWebView, WKUIDelegate,
         download.delegate = self       
     }
     
+    public func download(_ download: WKDownload, didReceive response: URLResponse) {
+        let downloadId = ObjectIdentifier(download)
+        guard let info = activeWKDownloads[downloadId] else {
+            return
+        }
+        
+        if let mimeType = response.mimeType {
+            info.mimeType = mimeType
+        }
+        
+        let expectedLength = response.expectedContentLength
+        if expectedLength > 0 {
+            info.expectedBytes = expectedLength
+        }
+        
+        if let textEncodingName = response.textEncodingName {
+            info.textEncodingName = textEncodingName
+        }
+        
+        if let httpResponse = response as? HTTPURLResponse,
+           let disposition = contentDispositionHeader(from: httpResponse) {
+            info.contentDisposition = disposition
+        }
+    }
+    
     public func downloadDidFinish(_ download: WKDownload) {
-        // Handle completion for blob downloads that use filePathDestination
-        if let destination = filePathDestination {
-            let suggestedFilename = destination.lastPathComponent
-            do {
-                let attributes = try FileManager.default.attributesOfItem(atPath: destination.path)
-                let totalBytes = (attributes[.size] as? NSNumber)?.int64Value
-                DispatchQueue.main.async {
-                    self.channelDelegate?.onDownloadCompleted(
-                        originalUrl: nil,
-                        suggestedFilename: suggestedFilename,
-                        filePath: destination.path,
-                        mimeType: nil,
-                        totalBytes: totalBytes,
-                        isSuccessful: true,
-                        error: nil
-                    )
-                }
-            } catch {
-                DispatchQueue.main.async {
-                    self.channelDelegate?.onDownloadCompleted(
-                        originalUrl: nil,
-                        suggestedFilename: suggestedFilename,
-                        filePath: destination.path,
-                        mimeType: nil,
-                        totalBytes: nil,
-                        isSuccessful: false,
-                        error: error.localizedDescription
-                    )
-                }
+        let downloadId = ObjectIdentifier(download)
+        guard let info = activeWKDownloads[downloadId] else {
+            return
+        }
+        
+        info.progressObservation?.invalidate()
+        activeWKDownloads.removeValue(forKey: downloadId)
+        
+        var isSuccessful = true
+        var errorMessage: String?
+        var totalBytes: Int64?
+        
+        do {
+            let attributes = try FileManager.default.attributesOfItem(atPath: info.destinationURL.path)
+            totalBytes = (attributes[.size] as? NSNumber)?.int64Value
+            if let expectedBytes = info.expectedBytes,
+               let actualBytes = totalBytes,
+               expectedBytes > 0,
+               expectedBytes != actualBytes {
+                isSuccessful = false
+                errorMessage = "File size mismatch. Expected \(expectedBytes) bytes, got \(actualBytes) bytes."
+                try? FileManager.default.removeItem(at: info.destinationURL)
+            } else if let originalUrl = info.originalUrl {
+                completedDownloadPaths[originalUrl] = info.destinationURL
             }
-            filePathDestination = nil
+        } catch {
+            isSuccessful = false
+            errorMessage = error.localizedDescription
+        }
+        
+        let originalUrl = info.originalUrl
+        let suggestedFilename = info.suggestedFilename
+        let mimeType = info.mimeType
+        let filePath = isSuccessful ? info.destinationURL.path : nil
+        let totalBytesValue = totalBytes
+        
+        DispatchQueue.main.async { [weak self] in
+            guard let self = self else { return }
+            self.channelDelegate?.onDownloadCompleted(
+                originalUrl: originalUrl,
+                suggestedFilename: suggestedFilename,
+                filePath: filePath,
+                mimeType: mimeType,
+                totalBytes: totalBytesValue,
+                isSuccessful: isSuccessful,
+                error: errorMessage
+            )
         }
     }
     
     public func download(_ download: WKDownload, didFailWithError error: Error, resumeData: Data?) {
-        // This method is called when WKDownload fails, but we handle errors in URLSession delegate
-        // No need to do anything here as our startTrackedDownload handles everything
+        let downloadId = ObjectIdentifier(download)
+        guard let info = activeWKDownloads[downloadId] else {
+            return
+        }
+        
+        info.progressObservation?.invalidate()
+        activeWKDownloads.removeValue(forKey: downloadId)
+        
+        if FileManager.default.fileExists(atPath: info.destinationURL.path) {
+            try? FileManager.default.removeItem(at: info.destinationURL)
+        }
+        
+        DispatchQueue.main.async {
+            self.channelDelegate?.onDownloadCompleted(
+                originalUrl: info.originalUrl,
+                suggestedFilename: info.suggestedFilename,
+                filePath: nil,
+                mimeType: info.mimeType,
+                totalBytes: nil,
+                isSuccessful: false,
+                error: error.localizedDescription
+            )
+        }
+    }
+    
+    public func getDownloadedFilePath(for originalUrl: String) -> String? {
+        return completedDownloadPaths[originalUrl]?.path
     }
     
     public func webView(_ webView: WKWebView,
@@ -2870,8 +3061,11 @@ if(window.\(JavaScriptBridgeJS.get_JAVASCRIPT_BRIDGE_NAME())[\(_callHandlerID)] 
         currentOpenPanel?.cancel(self)
         currentOpenPanel?.close()
         currentOpenPanel = nil
+        urlSession?.invalidateAndCancel()
+        urlSession = nil
+        activeSessionDownloads.removeAll()
+        sessionDownloadInfo.removeAll()
         printJobCompletionHandler = nil
-        filePathDestination = nil
         removeObserver(self, forKeyPath: #keyPath(WKWebView.estimatedProgress))
         removeObserver(self, forKeyPath: #keyPath(WKWebView.url))
         removeObserver(self, forKeyPath: #keyPath(WKWebView.title))
@@ -2986,148 +3180,158 @@ if(window.\(JavaScriptBridgeJS.get_JAVASCRIPT_BRIDGE_NAME())[\(_callHandlerID)] 
 
     // 3. Add a method to start a download with progress tracking
     public func startTrackedDownload(url: URL, suggestedFilename: String?) {
-        // Show save panel first to let user choose download location
         showSavePanelForDownload(suggestedFilename: suggestedFilename ?? url.lastPathComponent, mimeType: nil) { [weak self] selectedURL in
-            guard let self = self else { return }
+            guard let self = self, let destinationURL = selectedURL else { return }
             
-            if selectedURL == nil {
-                // User cancelled the download
-                return
-            }
-            
-            // Store the selected destination for this URL
-            if let selectedURL = selectedURL {
-                self.selectedDownloadDestinations[url] = selectedURL
-            }
-            
-            if self.urlSession == nil {
-                let config = URLSessionConfiguration.default
-                self.urlSession = URLSession(configuration: config, delegate: self, delegateQueue: nil)
-            }
-            
-            let task = self.urlSession!.downloadTask(with: url)
-            self.activeDownloadTasks[url] = task
-            self.activeDownloadProgress[url] = 0
-            
-            // Send start event
-            let request = DownloadStartRequest(
-                url: url.absoluteString,
-                userAgent: nil,
-                contentDisposition: nil,
-                mimeType: nil,
-                contentLength: 0,
-                suggestedFilename: suggestedFilename,
-                textEncodingName: nil
-            )
-            
-            DispatchQueue.main.async {
-                if let channelDelegate = self.channelDelegate {
-                    channelDelegate.onDownloadStarting(request: request)
+            self.prepareDownloadRequest(url: url) { [weak self] request in
+                guard let self = self else { return }
+                DispatchQueue.main.async { [weak self] in
+                    guard let self = self else { return }
+                    
+                    self.completedDownloadPaths.removeValue(forKey: url.absoluteString)
+                    
+                    let session = self.ensureURLSessionInstance()
+                    let task = session.downloadTask(with: request)
+                    let taskIdentifier = ObjectIdentifier(task)
+                    
+                    let resolvedSuggestedFilename = self.ensureProperFileExtension(filename: suggestedFilename ?? url.lastPathComponent,
+                                                                                    url: url,
+                                                                                    mimeType: nil)
+                    
+                    let info = SessionDownloadInfo(destinationURL: destinationURL,
+                                                   suggestedFilename: resolvedSuggestedFilename,
+                                                   originalUrl: url)
+                    info.userAgent = request.value(forHTTPHeaderField: "User-Agent")
+                    self.sessionDownloadInfo[taskIdentifier] = info
+                    self.activeSessionDownloads[taskIdentifier] = task
+                    
+                    let startRequest = DownloadStartRequest(
+                        url: url.absoluteString,
+                        userAgent: info.userAgent,
+                        contentDisposition: nil,
+                        mimeType: nil,
+                        contentLength: 0,
+                        suggestedFilename: resolvedSuggestedFilename,
+                        textEncodingName: nil
+                    )
+                    
+                    self.channelDelegate?.onDownloadStarting(request: startRequest)
+                    task.resume()
                 }
             }
-            
-            task.resume()
         }
     }
 }
 
 extension InAppWebView: URLSessionDownloadDelegate {
     public func urlSession(_ session: URLSession, downloadTask: URLSessionDownloadTask, didWriteData bytesWritten: Int64, totalBytesWritten: Int64, totalBytesExpectedToWrite: Int64) {
-        guard let url = downloadTask.originalRequest?.url else { return }
-        let progress = totalBytesExpectedToWrite > 0 ? Double(totalBytesWritten) / Double(totalBytesExpectedToWrite) : 0
-        activeDownloadProgress[url] = progress
+        let taskIdentifier = ObjectIdentifier(downloadTask)
+        guard let info = sessionDownloadInfo[taskIdentifier] else {
+            return
+        }
         
-        DispatchQueue.main.async {
-            if let channelDelegate = self.channelDelegate {
-                channelDelegate.onDownloadProgress(url: url.absoluteString, progress: progress, totalBytes: totalBytesExpectedToWrite, downloadedBytes: totalBytesWritten)
-            }
+        if totalBytesExpectedToWrite > 0 {
+            info.expectedBytes = totalBytesExpectedToWrite
+        }
+        info.downloadedBytes = totalBytesWritten
+        
+        let totalBytes = info.expectedBytes ?? totalBytesExpectedToWrite
+        let progress = totalBytes > 0 ? Double(totalBytesWritten) / Double(totalBytes) : 0
+        
+        DispatchQueue.main.async { [weak self] in
+            guard let self = self else { return }
+            self.channelDelegate?.onDownloadProgress(
+                url: info.originalUrl.absoluteString,
+                progress: progress.isFinite ? progress : 0,
+                totalBytes: totalBytes,
+                downloadedBytes: totalBytesWritten
+            )
         }
     }
+    
     public func urlSession(_ session: URLSession, downloadTask: URLSessionDownloadTask, didFinishDownloadingTo location: URL) {
-        guard let url = downloadTask.originalRequest?.url else { return }
-        let suggestedFilename = downloadTask.response?.suggestedFilename ?? url.lastPathComponent
+        let taskIdentifier = ObjectIdentifier(downloadTask)
+        guard let info = sessionDownloadInfo[taskIdentifier] else {
+            return
+        }
         
-        // Use the user-selected destination if available, otherwise fall back to default
-        let destinationURL: URL
-        if let selectedDestination = selectedDownloadDestinations[url] {
-            destinationURL = selectedDestination
-            selectedDownloadDestinations.removeValue(forKey: url)
-        } else {
-            // Fallback to default download directory
-            let downloadDirectory: URL
-            if let downloadPath = settings?.downloadPath, !downloadPath.isEmpty {
-                downloadDirectory = URL(fileURLWithPath: downloadPath)
-            } else {
-                downloadDirectory = FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask).first ?? FileManager.default.temporaryDirectory
-            }
-            do {
-                try FileManager.default.createDirectory(at: downloadDirectory, withIntermediateDirectories: true, attributes: nil)
-            } catch {
-                print("Failed to create download directory: \(error.localizedDescription)")
-            }
-            destinationURL = downloadDirectory.appendingPathComponent(suggestedFilename)
+        let response = downloadTask.response
+        info.mimeType = response?.mimeType ?? info.mimeType
+        info.textEncodingName = response?.textEncodingName ?? info.textEncodingName
+        if let httpResponse = response as? HTTPURLResponse {
+            info.contentDisposition = contentDispositionHeader(from: httpResponse)
+        }
+        if let expectedLength = response?.expectedContentLength, expectedLength > 0 {
+            info.expectedBytes = expectedLength
         }
         
         do {
-            // Ensure the destination directory exists
-            let destinationDirectory = destinationURL.deletingLastPathComponent()
+            let destinationDirectory = info.destinationURL.deletingLastPathComponent()
             try FileManager.default.createDirectory(at: destinationDirectory, withIntermediateDirectories: true, attributes: nil)
             
-            // If file already exists, remove it first
-            if FileManager.default.fileExists(atPath: destinationURL.path) {
-                try FileManager.default.removeItem(at: destinationURL)
+            if FileManager.default.fileExists(atPath: info.destinationURL.path) {
+                try FileManager.default.removeItem(at: info.destinationURL)
             }
             
-            // Move the downloaded file to the destination
-            try FileManager.default.moveItem(at: location, to: destinationURL)
-            let attributes = try FileManager.default.attributesOfItem(atPath: destinationURL.path)
-            let totalBytes = (attributes[.size] as? NSNumber)?.int64Value
+            try FileManager.default.moveItem(at: location, to: info.destinationURL)
+            let attributes = try FileManager.default.attributesOfItem(atPath: info.destinationURL.path)
+            let fileSize = (attributes[.size] as? NSNumber)?.int64Value
+            info.downloadedBytes = fileSize ?? info.downloadedBytes
             
-            DispatchQueue.main.async {
-                self.channelDelegate?.onDownloadCompleted(
-                    originalUrl: url.absoluteString,
-                    suggestedFilename: suggestedFilename,
-                    filePath: destinationURL.path,
-                    mimeType: nil,
-                    totalBytes: totalBytes,
-                    isSuccessful: true,
-                    error: nil
-                )
+            if let expectedBytes = info.expectedBytes,
+               let fileSize = fileSize,
+               expectedBytes > 0,
+               expectedBytes != fileSize {
+                try? FileManager.default.removeItem(at: info.destinationURL)
+                reportSessionDownloadCompletion(info: info, isSuccessful: false, errorMessage: "File size mismatch. Expected \(expectedBytes) bytes, got \(fileSize) bytes.")
+            } else {
+                completedDownloadPaths[info.originalUrl.absoluteString] = info.destinationURL
+                reportSessionDownloadCompletion(info: info, isSuccessful: true, errorMessage: nil)
             }
         } catch {
-            DispatchQueue.main.async {
-                self.channelDelegate?.onDownloadCompleted(
-                    originalUrl: url.absoluteString,
-                    suggestedFilename: suggestedFilename,
-                    filePath: nil,
-                    mimeType: nil,
-                    totalBytes: nil,
-                    isSuccessful: false,
-                    error: error.localizedDescription
-                )
-            }
+            reportSessionDownloadCompletion(info: info, isSuccessful: false, errorMessage: error.localizedDescription)
         }
         
-        // Clean up tracking data
-        activeDownloadTasks.removeValue(forKey: url)
-        activeDownloadProgress.removeValue(forKey: url)
+        cleanupSessionDownload(taskIdentifier: taskIdentifier)
     }
+    
     public func urlSession(_ session: URLSession, task: URLSessionTask, didCompleteWithError error: Error?) {
-        guard let url = task.originalRequest?.url else { return }
-        if let error = error {
-            DispatchQueue.main.async {
-                self.channelDelegate?.onDownloadCompleted(
-                    originalUrl: url.absoluteString,
-                    suggestedFilename: task.response?.suggestedFilename ?? url.lastPathComponent,
-                    filePath: nil,
-                    mimeType: task.response?.mimeType,
-                    totalBytes: nil,
-                    isSuccessful: false,
-                    error: error.localizedDescription
-                )
-            }
+        guard let error = error else {
+            return
         }
-        activeDownloadTasks.removeValue(forKey: url)
-        activeDownloadProgress.removeValue(forKey: url)
+        let taskIdentifier = ObjectIdentifier(task)
+        guard let info = sessionDownloadInfo[taskIdentifier] else {
+            return
+        }
+        
+        if FileManager.default.fileExists(atPath: info.destinationURL.path) {
+            try? FileManager.default.removeItem(at: info.destinationURL)
+        }
+        
+        reportSessionDownloadCompletion(info: info, isSuccessful: false, errorMessage: error.localizedDescription)
+        cleanupSessionDownload(taskIdentifier: taskIdentifier)
+    }
+    
+    private func reportSessionDownloadCompletion(info: SessionDownloadInfo, isSuccessful: Bool, errorMessage: String?) {
+        let suggestedFilename = info.suggestedFilename ?? info.destinationURL.lastPathComponent
+        let filePath = isSuccessful ? info.destinationURL.path : nil
+        let totalBytes: Int64? = info.downloadedBytes > 0 ? info.downloadedBytes : info.expectedBytes
+        
+        DispatchQueue.main.async {
+            self.channelDelegate?.onDownloadCompleted(
+                originalUrl: info.originalUrl.absoluteString,
+                suggestedFilename: suggestedFilename,
+                filePath: filePath,
+                mimeType: info.mimeType,
+                totalBytes: totalBytes,
+                isSuccessful: isSuccessful,
+                error: errorMessage
+            )
+        }
+    }
+    
+    private func cleanupSessionDownload(taskIdentifier: ObjectIdentifier) {
+        activeSessionDownloads.removeValue(forKey: taskIdentifier)
+        sessionDownloadInfo.removeValue(forKey: taskIdentifier)
     }
 }
