@@ -61,6 +61,12 @@ public class InAppWebViewFlutterPlugin: NSObject, FlutterPlugin {
             proxyManager = ProxyManager(plugin: self)
             profileManager = ProfileManager(plugin: self)
         }
+
+        // Proactively prepare the WebExtension system so the controller is
+        // available before any WKWebView instances are created.
+        Task {
+            _ = await ExtensionManager.prepareExtensionSystem()
+        }
     }
     
     public static func register(with registrar: FlutterPluginRegistrar) {

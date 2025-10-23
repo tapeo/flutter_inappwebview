@@ -320,6 +320,15 @@ final class SimpleExtensionTab: NSObject, WKWebExtensionTab {
     func size(for context: WKWebExtensionContext) -> CGSize { webView?.frame.size ?? .zero }
     func title(for context: WKWebExtensionContext) -> String? { cachedTitle ?? webView?.title }
     func url(for context: WKWebExtensionContext) -> URL? { committedURL ?? webView?.url }
-    func webView(for context: WKWebExtensionContext) -> WKWebView? { webView }
+    func webView(for context: WKWebExtensionContext) -> WKWebView? {
+        guard let view = webView else { return nil }
+        if #available(macOS 15.4, *), let controller = ExtensionManager.shared.extensionController {
+            // Only return the web view if it is configured with the active controller.
+            if view.configuration.webExtensionController !== controller {
+                return nil
+            }
+        }
+        return view
+    }
     func zoomFactor(for context: WKWebExtensionContext) -> Double { Double(webView?.pageZoom ?? 1.0) }
 }

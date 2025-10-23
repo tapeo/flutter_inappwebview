@@ -96,20 +96,25 @@ final class ExtensionManager: NSObject, ObservableObject, WKWebExtensionControll
     }
 
     func applyExtensions(to configuration: WKWebViewConfiguration) {
-        if let controller {
-            configuration.webExtensionController = controller
-            return
+        // Ensure a controller instance exists as early as possible so newly
+        // created WKWebViews are configured up front. Contexts can be loaded later.
+        if controller == nil {
+            let created = WKWebExtensionController()
+            created.delegate = self
+            controller = created
         }
-
-        if let controller {
-            configuration.webExtensionController = controller
-        }
+        if let controller { configuration.webExtensionController = controller }
     }
 
     func registerWebView(_ webView: WKWebView, id: String) {
         webViews[id] = WeakWebView(value: webView)
         identifierForWebView.setObject(id as NSString, forKey: webView)
         lastActiveWebView = webView
+
+        // Ensure the web view is configured with the extension controller if available.
+        if let controller = controller {
+            webView.configuration.webExtensionController = controller
+        }
 
         if #available(macOS 15.4, *) {
             let tab: SimpleExtensionTab
@@ -448,15 +453,22 @@ final class ExtensionManager: NSObject, ObservableObject, WKWebExtensionControll
             let loadedContexts = try await loadExtensionsFromDisk()
             guard !loadedContexts.isEmpty else { return false }
 
-            let controller = WKWebExtensionController()
-            controller.delegate = self
+            // Reuse existing controller if present (it may already be attached to WKWebViews).
+            let controller = self.controller ?? {
+                let created = WKWebExtensionController()
+                created.delegate = self
+                self.controller = created
+                return created
+            }()
 
             for context in loadedContexts {
                 try controller.load(context)
             }
 
-            self.controller = controller
             self.contexts = loadedContexts
+            // No need to reattach if we reused the existing controller; however,
+            // keep it idempotent in case any WKWebView was created before applyExtensions.
+            for case let (_, wrapper) in webViews { wrapper.value?.configuration.webExtensionController = controller }
             ensureWindowRegisteredWithController()
             flushPendingControllerActions()
             return true
