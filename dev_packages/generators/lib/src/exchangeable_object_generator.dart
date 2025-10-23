@@ -57,7 +57,7 @@ class ExchangeableObjectGenerator
     }
 
     classBuffer.write(
-        '${(visitor.constructor.enclosingElement3 as ClassElement).isAbstract ? 'abstract ' : ''}class $extClassName');
+        '${(visitor.constructor.enclosingElement as ClassElement).isAbstract ? 'abstract ' : ''}class $extClassName');
     if (interfaces.isNotEmpty) {
       classBuffer.writeln(
           ' implements ${interfaces.map((i) => i.element.name.replaceFirst("_", "")).join(', ')}');
@@ -284,8 +284,8 @@ class ExchangeableObjectGenerator
             } else if (hasFromValue && deprecatedHasToValue) {
               classBuffer.write(
                   '${fieldTypeElement.name!.replaceFirst("_", "")}.fromValue($deprecatedFieldName${deprecatedIsNullable ? '?' : ''}.toValue())${!isNullable ? '!' : ''}');
-            } else if (deprecatedField.type.getDisplayString() == "Uri" &&
-                newFieldElement.type.getDisplayString() == "WebUri") {
+            } else if (deprecatedField.type.getDisplayString(withNullability: false) == "Uri" &&
+                newFieldElement.type.getDisplayString(withNullability: false) == "WebUri") {
               if (deprecatedIsNullable) {
                 classBuffer.write(
                     "($deprecatedFieldName != null ? WebUri.uri($deprecatedFieldName!) : ${isNullable ? "null" : "WebUri('')"})");
@@ -397,8 +397,13 @@ class ExchangeableObjectGenerator
               ?.getField("deserializer")
               ?.toFunctionValue();
           if (customDeserializer != null) {
-            final deserializerClassName =
-                customDeserializer.enclosingElement3.name;
+            String? deserializerClassName;
+            final enclosing = customDeserializer.enclosingElement;
+            if (enclosing is ClassElement) {
+              deserializerClassName = enclosing.name;
+            } else {
+              deserializerClassName = null;
+            }
             if (deserializerClassName != null) {
               value =
                   "$deserializerClassName.${customDeserializer.name}($value, enumMethod: enumMethod)";
@@ -514,7 +519,13 @@ class ExchangeableObjectGenerator
               ?.getField("serializer")
               ?.toFunctionValue();
           if (customSerializer != null) {
-            final serializerClassName = customSerializer.enclosingElement3.name;
+            String? serializerClassName;
+            final enclosing = customSerializer.enclosingElement;
+            if (enclosing is ClassElement) {
+              serializerClassName = enclosing.name;
+            } else {
+              serializerClassName = null;
+            }
             if (serializerClassName != null) {
               mapValue =
                   "$serializerClassName.${customSerializer.name}($mapValue, enumMethod: enumMethod)";
@@ -607,7 +618,7 @@ class ExchangeableObjectGenerator
     // remove class reference terminating with "_"
     final classNameReference = fieldTypeElement?.name?.replaceFirst("_", "");
     final isNullable = Util.typeIsNullable(elementType);
-    final displayString = elementType.getDisplayString();
+    final displayString = elementType.getDisplayString(withNullability: false);
     if (displayString == "Uri") {
       if (!isNullable) {
         return "(Uri.tryParse($value) ?? Uri())";
@@ -714,7 +725,7 @@ class ExchangeableObjectGenerator
   String getToMapValue(String fieldName, DartType elementType) {
     final fieldTypeElement = elementType.element;
     final isNullable = Util.typeIsNullable(elementType);
-    final displayString = elementType.getDisplayString();
+    final displayString = elementType.getDisplayString(withNullability: false);
     if (displayString == "Uri") {
       return '$fieldName${isNullable ? '?' : ''}.toString()';
     } else if (displayString == "WebUri") {
