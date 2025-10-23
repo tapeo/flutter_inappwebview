@@ -3112,26 +3112,38 @@ if(window.\(JavaScriptBridgeJS.get_JAVASCRIPT_BRIDGE_NAME())[\(_callHandlerID)] 
         debugPrint("InAppWebView - dealloc")
     }
     
-    // MARK: - Context Menu Handler for Image Downloads (macOS)
+    // MARK: - Context Menu Handling (macOS)
     private var lastRightClickPoint: NSPoint = NSPoint.zero
-    
+
     public override func rightMouseDown(with event: NSEvent) {
-        // Store the click location for later use
-        lastRightClickPoint = convert(event.locationInWindow, from: nil)
-        
-        // Pass coordinates to Flutter for custom context menu
-        if let channelDelegate = channelDelegate {
-            channelDelegate.onRightClick(x: Double(lastRightClickPoint.x), y: Double(lastRightClickPoint.y))
+        // Default behavior: allow the WebView/page to handle right-clicks
+        // (so web apps like Figma can show their own context menu).
+        // If Option (⌥) is held during right-click, intercept and forward to Flutter
+        // to show the custom context menu instead.
+
+        let isOptionClick = event.modifierFlags.contains(.option)
+
+        if isOptionClick {
+            // Store the click location and notify Flutter
+            lastRightClickPoint = convert(event.locationInWindow, from: nil)
+            if let channelDelegate = channelDelegate {
+                channelDelegate.onRightClick(x: Double(lastRightClickPoint.x), y: Double(lastRightClickPoint.y))
+            }
+            // Do not call super to suppress default/system menu when custom menu is requested
+            return
         }
-        
-        // Do NOT call super.rightMouseDown to prevent system menu
-        // super.rightMouseDown(with: event)
+
+        // No special modifier: let WebKit and the page handle the event
+        super.rightMouseDown(with: event)
     }
-    
+
     public override func willOpenMenu(_ menu: NSMenu, with event: NSEvent) {
-        // Completely prevent any menu from showing
-        menu.removeAllItems()
-        menu.cancelTracking()
+        // Only suppress the native menu when Option (⌥) is used to trigger the custom menu.
+        // Otherwise, allow the default context menu to appear so that pages or WebKit can handle it.
+        if event.modifierFlags.contains(.option) {
+            menu.removeAllItems()
+            menu.cancelTracking()
+        }
     }
     
     
