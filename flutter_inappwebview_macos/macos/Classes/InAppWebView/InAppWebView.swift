@@ -56,6 +56,7 @@ public class InAppWebView: WKWebView, WKUIDelegate,
     public override var acceptsFirstResponder: Bool { return true }
 
     let extensionManager = ExtensionManager.shared
+    private let contextMenuHandler = InAppWebViewContextMenuHandler()
 
     init(id: Any?, plugin: InAppWebViewFlutterPlugin?, frame: CGRect, configuration: WKWebViewConfiguration,
          userScripts: [UserScript] = []) {
@@ -2733,38 +2734,14 @@ if(window.\(JavaScriptBridgeJS.get_JAVASCRIPT_BRIDGE_NAME())[\(_callHandlerID)] 
         debugPrint("InAppWebView - dealloc")
     }
     
-    // MARK: - Context Menu Handling (macOS)
-    private var lastRightClickPoint: NSPoint = NSPoint.zero
-
     public override func rightMouseDown(with event: NSEvent) {
-        // Default behavior: allow the WebView/page to handle right-clicks
-        // (so web apps like Figma can show their own context menu).
-        // If Option (⌥) is held during right-click, intercept and forward to Flutter
-        // to show the custom context menu instead.
-
-        let isOptionClick = event.modifierFlags.contains(.option)
-
-        if isOptionClick {
-            // Store the click location and notify Flutter
-            lastRightClickPoint = convert(event.locationInWindow, from: nil)
-            if let channelDelegate = channelDelegate {
-                channelDelegate.onRightClick(x: Double(lastRightClickPoint.x), y: Double(lastRightClickPoint.y))
-            }
-            // Do not call super to suppress default/system menu when custom menu is requested
-            return
+        if contextMenuHandler.shouldUseDefaultRightClickHandling(for: self, with: event) {
+            super.rightMouseDown(with: event)
         }
-
-        // No special modifier: let WebKit and the page handle the event
-        super.rightMouseDown(with: event)
     }
 
     public override func willOpenMenu(_ menu: NSMenu, with event: NSEvent) {
-        // Only suppress the native menu when Option (⌥) is used to trigger the custom menu.
-        // Otherwise, allow the default context menu to appear so that pages or WebKit can handle it.
-        if event.modifierFlags.contains(.option) {
-            menu.removeAllItems()
-            menu.cancelTracking()
-        }
+        contextMenuHandler.handleWillOpenMenu(menu, with: event)
     }
 }
     
