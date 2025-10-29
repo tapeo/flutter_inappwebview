@@ -56,7 +56,7 @@ public class InAppWebView: WKWebView, WKUIDelegate,
     public override var acceptsFirstResponder: Bool { return true }
 
     let extensionManager = ExtensionManager.shared
-    private let contextMenuHandler = InAppWebViewContextMenuHandler()
+    private lazy var contextMenuHandler = InAppWebViewContextMenuHandler(webView: self)
 
     init(id: Any?, plugin: InAppWebViewFlutterPlugin?, frame: CGRect, configuration: WKWebViewConfiguration,
          userScripts: [UserScript] = []) {
