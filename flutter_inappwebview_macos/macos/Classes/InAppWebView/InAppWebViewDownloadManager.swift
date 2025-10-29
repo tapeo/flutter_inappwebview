@@ -7,6 +7,7 @@ import AppKit
 import Foundation
 @preconcurrency import WebKit
 import UniformTypeIdentifiers
+import Darwin
 
 final class InAppWebViewDownloadManager: NSObject, WKDownloadDelegate {
     private weak var webView: InAppWebView?
@@ -15,6 +16,7 @@ final class InAppWebViewDownloadManager: NSObject, WKDownloadDelegate {
 
     private class WKDownloadInfo {
         let destinationURL: URL
+        let temporaryDestinationURL: URL?
         let suggestedFilename: String
         let originalUrl: String?
         var mimeType: String?
@@ -24,8 +26,9 @@ final class InAppWebViewDownloadManager: NSObject, WKDownloadDelegate {
         var textEncodingName: String?
         var progressObservation: NSKeyValueObservation?
 
-        init(destinationURL: URL, suggestedFilename: String, originalUrl: String?) {
+        init(destinationURL: URL, temporaryDestinationURL: URL?, suggestedFilename: String, originalUrl: String?) {
             self.destinationURL = destinationURL
+            self.temporaryDestinationURL = temporaryDestinationURL
             self.suggestedFilename = suggestedFilename
             self.originalUrl = originalUrl
         }
@@ -47,8 +50,22 @@ final class InAppWebViewDownloadManager: NSObject, WKDownloadDelegate {
                 return
             }
 
-            self.prepareWebKitDownload(download, response: response, destinationURL: destinationURL, suggestedFilename: suggestedFilename)
-            completionHandler(destinationURL)
+            let temporaryURL = self.makeTemporaryDownloadURL(for: destinationURL)
+            let downloadTargetURL = temporaryURL ?? destinationURL
+
+            self.prepareWebKitDownload(
+                download,
+                response: response,
+                destinationURL: destinationURL,
+                temporaryDestinationURL: temporaryURL,
+                suggestedFilename: suggestedFilename
+            )
+
+            if FileManager.default.fileExists(atPath: downloadTargetURL.path) {
+                try? FileManager.default.removeItem(at: downloadTargetURL)
+            }
+
+            completionHandler(downloadTargetURL)
         }
     }
 
@@ -91,6 +108,10 @@ final class InAppWebViewDownloadManager: NSObject, WKDownloadDelegate {
         var totalBytes: Int64?
 
         do {
+            if let tempURL = info.temporaryDestinationURL {
+                try deliverDownloadedFile(from: tempURL, to: info.destinationURL)
+            }
+
             let attributes = try FileManager.default.attributesOfItem(atPath: info.destinationURL.path)
             totalBytes = (attributes[.size] as? NSNumber)?.int64Value
             if let expectedBytes = info.expectedBytes,
@@ -106,6 +127,10 @@ final class InAppWebViewDownloadManager: NSObject, WKDownloadDelegate {
         } catch {
             isSuccessful = false
             errorMessage = error.localizedDescription
+        }
+
+        if let tempURL = info.temporaryDestinationURL {
+            try? FileManager.default.removeItem(at: tempURL)
         }
 
         let originalUrl = info.originalUrl
@@ -141,6 +166,10 @@ final class InAppWebViewDownloadManager: NSObject, WKDownloadDelegate {
             try? FileManager.default.removeItem(at: info.destinationURL)
         }
 
+        if let tempURL = info.temporaryDestinationURL {
+            try? FileManager.default.removeItem(at: tempURL)
+        }
+
         DispatchQueue.main.async { [weak self] in
             guard let self = self, let webView = self.webView else { return }
             webView.channelDelegate?.onDownloadCompleted(
@@ -159,12 +188,23 @@ final class InAppWebViewDownloadManager: NSObject, WKDownloadDelegate {
         completedDownloadPaths[originalUrl]?.path
     }
 
-    private func prepareWebKitDownload(_ download: WKDownload, response: URLResponse, destinationURL: URL, suggestedFilename: String) {
+    private func prepareWebKitDownload(
+        _ download: WKDownload,
+        response: URLResponse,
+        destinationURL: URL,
+        temporaryDestinationURL: URL?,
+        suggestedFilename: String
+    ) {
         let downloadId = ObjectIdentifier(download)
         let resolvedSuggestedFilename = suggestedFilename.isEmpty ? destinationURL.lastPathComponent : suggestedFilename
         let resolvedOriginalURL = download.originalRequest?.url ?? response.url ?? destinationURL
 
-        let info = WKDownloadInfo(destinationURL: destinationURL, suggestedFilename: resolvedSuggestedFilename, originalUrl: resolvedOriginalURL.absoluteString)
+        let info = WKDownloadInfo(
+            destinationURL: destinationURL,
+            temporaryDestinationURL: temporaryDestinationURL,
+            suggestedFilename: resolvedSuggestedFilename,
+            originalUrl: resolvedOriginalURL.absoluteString
+        )
         info.mimeType = response.mimeType
         let expectedLength = response.expectedContentLength
         if expectedLength > 0 {
@@ -228,6 +268,24 @@ final class InAppWebViewDownloadManager: NSObject, WKDownloadDelegate {
         }
     }
 
+    private func makeTemporaryDownloadURL(for destinationURL: URL) -> URL? {
+        let tempDirectory = FileManager.default.temporaryDirectory.appendingPathComponent("PolaDownloads", isDirectory: true)
+        do {
+            try FileManager.default.createDirectory(at: tempDirectory, withIntermediateDirectories: true)
+        } catch {
+            NSLog("Failed creating temporary downloads directory: \(error.localizedDescription)")
+            return nil
+        }
+
+        var filename = UUID().uuidString
+        let fileExtension = destinationURL.pathExtension
+        if !fileExtension.isEmpty {
+            filename += ".\(fileExtension)"
+        }
+
+        return tempDirectory.appendingPathComponent(filename)
+    }
+
     private func contentDispositionHeader(from response: HTTPURLResponse) -> String? {
         for (key, value) in response.allHeaderFields {
             if let keyString = key as? String,
@@ -264,6 +322,76 @@ final class InAppWebViewDownloadManager: NSObject, WKDownloadDelegate {
                 }
             }
         }
+    }
+
+    private func deliverDownloadedFile(from sourceURL: URL, to destinationURL: URL) throws {
+        let sourceAccess = sourceURL.startAccessingSecurityScopedResource()
+        let destinationAccess = destinationURL.startAccessingSecurityScopedResource()
+        defer {
+            if sourceAccess {
+                sourceURL.stopAccessingSecurityScopedResource()
+            }
+            if destinationAccess {
+                destinationURL.stopAccessingSecurityScopedResource()
+            }
+        }
+
+        let parentDirectory = destinationURL.deletingLastPathComponent()
+        try FileManager.default.createDirectory(at: parentDirectory, withIntermediateDirectories: true)
+
+        if FileManager.default.fileExists(atPath: destinationURL.path) {
+            try FileManager.default.removeItem(at: destinationURL)
+        }
+
+        guard let inputStream = InputStream(url: sourceURL) else {
+            throw NSError(domain: NSPOSIXErrorDomain, code: Int(ENOENT), userInfo: [NSFilePathErrorKey: sourceURL.path])
+        }
+
+        guard let outputStream = OutputStream(url: destinationURL, append: false) else {
+            throw NSError(domain: NSPOSIXErrorDomain, code: Int(EACCES), userInfo: [NSFilePathErrorKey: destinationURL.path])
+        }
+
+        inputStream.open()
+        outputStream.open()
+        defer {
+            inputStream.close()
+            outputStream.close()
+        }
+
+        var buffer = [UInt8](repeating: 0, count: 64 * 1024)
+
+        while true {
+            let bytesRead = buffer.withUnsafeMutableBufferPointer { pointer -> Int in
+                guard let baseAddress = pointer.baseAddress else { return -1 }
+                return inputStream.read(baseAddress, maxLength: pointer.count)
+            }
+
+            if bytesRead < 0 {
+                let error = inputStream.streamError ?? NSError(domain: NSPOSIXErrorDomain, code: Int(errno), userInfo: nil)
+                throw error
+            }
+
+            if bytesRead == 0 {
+                break
+            }
+
+            var totalBytesWritten = 0
+            while totalBytesWritten < bytesRead {
+                let bytesWritten = buffer.withUnsafeBufferPointer { pointer -> Int in
+                    guard let baseAddress = pointer.baseAddress else { return -1 }
+                    return outputStream.write(baseAddress.advanced(by: totalBytesWritten), maxLength: bytesRead - totalBytesWritten)
+                }
+
+                if bytesWritten <= 0 {
+                    let error = outputStream.streamError ?? NSError(domain: NSPOSIXErrorDomain, code: Int(errno), userInfo: nil)
+                    throw error
+                }
+
+                totalBytesWritten += bytesWritten
+            }
+        }
+
+        try? FileManager.default.removeItem(at: sourceURL)
     }
 
     private func getFileExtensionForMimeType(_ mimeType: String) -> String {
@@ -314,4 +442,5 @@ final class InAppWebViewDownloadManager: NSObject, WKDownloadDelegate {
             return ""
         }
     }
+
 }
