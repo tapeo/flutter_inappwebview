@@ -43,6 +43,7 @@ public class FlutterWebViewController: NSView, Disposable {
                                                binaryMessenger: plugin.registrar.messenger)
             webView!.channelDelegate = WebViewChannelDelegate(webView: webView!, channel: channel)
             webView!.frame = self.bounds
+            webView!.autoresizingMask = [.width, .height]
             webView!.initialUserScripts = userScripts
         } else {
             webView = InAppWebView(id: viewId,
@@ -58,11 +59,16 @@ public class FlutterWebViewController: NSView, Disposable {
         webView!.findInteractionController = findInteractionController
         findInteractionController.prepare()
         
-        webView!.autoresizingMask = []
-        self.autoresizesSubviews = false
-        self.autoresizingMask = []
+        self.wantsLayer = true
+        self.autoresizesSubviews = true
+        
+        webView!.autoresizingMask = [.width, .height]
+        webView!.layer?.isOpaque = true
+        webView!.layer?.drawsAsynchronously = true
+        
         self.addSubview(webView!)
 
+        webView!.frame = self.bounds
         webView!.settings = settings
         webView!.prepare()
         webView!.windowCreated = true
@@ -74,14 +80,14 @@ public class FlutterWebViewController: NSView, Disposable {
     
     public override func setFrameSize(_ newSize: NSSize) {
         super.setFrameSize(newSize)
-        // Manually set webview frame to match our bounds
-        webView()?.frame = self.bounds
+        // Don't manually set webview frame - let autoresizing mask handle it
+        // This prevents conflicts with Web Inspector layout
     }
     
     public override func layout() {
         super.layout()
-        // Ensure webview frame matches our bounds during layout
-        webView()?.frame = self.bounds
+        // Don't manually set webview frame - let autoresizing mask handle it
+        // This prevents the flashing/infinite animation issue with Web Inspector
     }
     
     public func webView() -> InAppWebView? {

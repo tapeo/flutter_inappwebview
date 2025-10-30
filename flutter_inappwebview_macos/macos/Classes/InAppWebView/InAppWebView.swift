@@ -292,6 +292,8 @@ public class InAppWebView: WKWebView, WKUIDelegate,
                 configuration.preferences.setValue(settings.allowFileAccessFromFileURLs, forKey: "allowFileAccessFromFileURLs")
             }
             
+            configuration.preferences.setValue(true, forKey: "developerExtrasEnabled")
+            
             if settings.incognito {
                 configuration.websiteDataStore = WKWebsiteDataStore.nonPersistent()
             } else if let profileId = settings.profileId, !profileId.isEmpty {
