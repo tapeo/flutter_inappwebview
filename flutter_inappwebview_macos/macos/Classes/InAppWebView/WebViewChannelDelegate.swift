@@ -708,6 +708,40 @@ public class WebViewChannelDelegate: ChannelDelegate {
                 result(success)
             }
             break
+        case .zoomIn:
+            if let webView = webView {
+                let step = arguments?["step"] as? Double ?? 0.1
+                webView.zoomIn(step: CGFloat(step))
+                result(true)
+            } else {
+                result(false)
+            }
+            break
+        case .zoomOut:
+            if let webView = webView {
+                let step = arguments?["step"] as? Double ?? 0.1
+                webView.zoomOut(step: CGFloat(step))
+                result(true)
+            } else {
+                result(false)
+            }
+            break
+        case .getPageZoom:
+            if let webView = webView {
+                result(Double(webView.getPageZoom()))
+            } else {
+                result(1.0)
+            }
+            break
+        case .setPageZoom:
+            if let webView = webView {
+                let zoom = arguments!["zoom"] as! Double
+                webView.setPageZoom(zoom: CGFloat(zoom))
+                result(true)
+            } else {
+                result(false)
+            }
+            break
         }
     }
     

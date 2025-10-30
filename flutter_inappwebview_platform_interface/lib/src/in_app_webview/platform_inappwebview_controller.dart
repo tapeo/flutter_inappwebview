@@ -1044,6 +1044,28 @@ abstract class PlatformInAppWebViewController extends PlatformInterface
         'getZoomScale is not implemented on the current platform');
   }
 
+  ///{@template flutter_inappwebview_platform_interface.PlatformInAppWebViewController.getPageZoom}
+  ///Gets the current page zoom level (macOS only).
+  ///
+  ///**Officially Supported Platforms/Implementations**:
+  ///- MacOS ([Official API - WKWebView.pageZoom](https://developer.apple.com/documentation/webkit/wkwebview/pagezoom))
+  ///{@endtemplate}
+  Future<double?> getPageZoom() {
+    throw UnimplementedError(
+        'getPageZoom is not implemented on the current platform');
+  }
+
+  ///{@template flutter_inappwebview_platform_interface.PlatformInAppWebViewController.setPageZoom}
+  ///Sets the page zoom level (macOS only).
+  ///
+  ///**Officially Supported Platforms/Implementations**:
+  ///- MacOS ([Official API - WKWebView.pageZoom](https://developer.apple.com/documentation/webkit/wkwebview/pagezoom))
+  ///{@endtemplate}
+  Future<void> setPageZoom({required double zoom}) {
+    throw UnimplementedError(
+        'setPageZoom is not implemented on the current platform');
+  }
+
   ///{@template flutter_inappwebview_platform_interface.PlatformInAppWebViewController.getSelectedText}
   ///Gets the selected text.
   ///
@@ -1848,6 +1870,7 @@ abstract class PlatformInAppWebViewController extends PlatformInterface
   ///
   ///**Officially Supported Platforms/Implementations**:
   ///- Android native WebView ([Official API - WebView.zoomIn](https://developer.android.com/reference/android/webkit/WebView#zoomIn()))
+  ///- MacOS ([Official API - WKWebView.pageZoom](https://developer.apple.com/documentation/webkit/wkwebview/pagezoom))
   ///{@endtemplate}
   Future<bool> zoomIn() {
     throw UnimplementedError(
@@ -1860,6 +1883,7 @@ abstract class PlatformInAppWebViewController extends PlatformInterface
   ///
   ///**Officially Supported Platforms/Implementations**:
   ///- Android native WebView ([Official API - WebView.zoomOut](https://developer.android.com/reference/android/webkit/WebView#zoomOut()))
+  ///- MacOS ([Official API - WKWebView.pageZoom](https://developer.apple.com/documentation/webkit/wkwebview/pagezoom))
   ///{@endtemplate}
   Future<bool> zoomOut() {
     throw UnimplementedError(

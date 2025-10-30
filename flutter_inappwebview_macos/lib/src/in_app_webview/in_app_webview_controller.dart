@@ -1978,6 +1978,33 @@ class MacOSInAppWebViewController extends PlatformInAppWebViewController
   }
 
   @override
+  Future<bool> zoomIn() async {
+    Map<String, dynamic> args = <String, dynamic>{};
+    args.putIfAbsent('step', () => 0.1);
+    await channel?.invokeMethod('zoomIn', args);
+    return true;
+  }
+
+  @override
+  Future<bool> zoomOut() async {
+    Map<String, dynamic> args = <String, dynamic>{};
+    args.putIfAbsent('step', () => 0.1);
+    await channel?.invokeMethod('zoomOut', args);
+    return true;
+  }
+
+  Future<double?> getPageZoom() async {
+    Map<String, dynamic> args = <String, dynamic>{};
+    return await channel?.invokeMethod<double>('getPageZoom', args);
+  }
+
+  Future<void> setPageZoom({required double zoom}) async {
+    Map<String, dynamic> args = <String, dynamic>{};
+    args.putIfAbsent('zoom', () => zoom);
+    await channel?.invokeMethod('setPageZoom', args);
+  }
+
+  @override
   Future<bool> isLoading() async {
     Map<String, dynamic> args = <String, dynamic>{};
     return await channel?.invokeMethod<bool>('isLoading', args) ?? false;

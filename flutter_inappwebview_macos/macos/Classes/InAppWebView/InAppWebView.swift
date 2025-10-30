@@ -2676,6 +2676,35 @@ if(window.\(JavaScriptBridgeJS.get_JAVASCRIPT_BRIDGE_NAME())[\(_callHandlerID)] 
         windowBeforeCreatedCallbacks.removeAll()
     }
     
+    public func zoomIn(step: CGFloat = 0.1) {
+        if #available(macOS 11.0, *) {
+            let currentZoom = pageZoom
+            let newZoom = min(currentZoom + step, 5.0) // Max zoom 500%
+            pageZoom = newZoom
+        }
+    }
+    
+    public func zoomOut(step: CGFloat = 0.1) {
+        if #available(macOS 11.0, *) {
+            let currentZoom = pageZoom
+            let newZoom = max(currentZoom - step, 0.1) // Min zoom 10%
+            pageZoom = newZoom
+        }
+    }
+    
+    public func getPageZoom() -> CGFloat {
+        if #available(macOS 11.0, *) {
+            return pageZoom
+        }
+        return 1.0
+    }
+    
+    public func setPageZoom(zoom: CGFloat) {
+        if #available(macOS 11.0, *) {
+            pageZoom = max(0.1, min(zoom, 5.0)) // Clamp between 10% and 500%
+        }
+    }
+    
     
     public func dispose() {
         // Unregister this WebView from extension system
