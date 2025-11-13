@@ -1346,18 +1346,11 @@ public class InAppWebView: WKWebView, WKUIDelegate,
         
         // Handle automatic downloads based on MIME type
         if #available(macOS 11.3, *) {
-            // Check if content can be shown, if not, trigger download
+            // If WKWebView cannot render this MIME type, trigger a download.
+            // Otherwise allow it to load inline (e.g., PDFs).
             if !navigationResponse.canShowMIMEType {
                 decisionHandler(.download)
                 return
-            }
-            
-            let mimeType = navigationResponse.response.mimeType
-            if let url = navigationResponse.response.url, navigationResponse.isForMainFrame {
-                if url.scheme != "file", mimeType != nil, !mimeType!.starts(with: "text/") {
-                    decisionHandler(.download)
-                    return
-                }
             }
         }
         
