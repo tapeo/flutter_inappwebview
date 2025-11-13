@@ -11,6 +11,7 @@ import AppKit
 final class InAppWebViewContextMenuHandler {
     private weak var webView: InAppWebView?
     private var cachedImageUrl: String?
+    private var cachedLinkUrl: String?
     
     init(webView: InAppWebView) {
         self.webView = webView
@@ -18,9 +19,8 @@ final class InAppWebViewContextMenuHandler {
 
     func shouldUseDefaultRightClickHandling(for webView: InAppWebView,
                                             with event: NSEvent) -> Bool {
-        // Fetch and cache the image URL at click time
         let clickLocation = webView.convert(event.locationInWindow, from: nil)
-        fetchImageUrlAtLocation(clickLocation, in: webView)
+        fetchContextUrlsAtLocation(clickLocation, in: webView)
         
         guard event.modifierFlags.contains(.option) else {
             return true
@@ -33,8 +33,8 @@ final class InAppWebViewContextMenuHandler {
 
     func handleWillOpenMenu(_ menu: NSMenu, with event: NSEvent) {
         guard event.modifierFlags.contains(.option) else {
-            // Intercept "Download Image" menu item
             interceptDownloadImageMenuItem(in: menu)
+            interceptDownloadLinkedFileMenuItem(in: menu)
             return
         }
 
@@ -67,6 +67,27 @@ final class InAppWebViewContextMenuHandler {
         }
     }
     
+    private func interceptDownloadLinkedFileMenuItem(in menu: NSMenu) {
+        for item in menu.items {
+            let title = item.title.lowercased()
+            if title.contains("download") && (title.contains("linked") || title.contains("link")) {
+                item.target = self
+                item.action = #selector(handleDownloadLinkedFile(_:))
+            }
+            if #available(macOS 10.12.2, *) {
+                if let identifier = item.identifier?.rawValue,
+                   identifier.contains("Download"),
+                   identifier.contains("Linked") || identifier.contains("Link") {
+                    item.target = self
+                    item.action = #selector(handleDownloadLinkedFile(_:))
+                }
+            }
+            if let submenu = item.submenu {
+                interceptDownloadLinkedFileMenuItem(in: submenu)
+            }
+        }
+    }
+    
     @objc private func handleDownloadImage(_ sender: NSMenuItem) {
         guard let webView = webView,
               let imageUrl = cachedImageUrl,
@@ -74,12 +95,22 @@ final class InAppWebViewContextMenuHandler {
               let url = URL(string: imageUrl) else {
             return
         }
-        
-        startImageDownload(url: url, webView: webView)
+        startDownload(url: url, webView: webView)
     }
     
-    private func fetchImageUrlAtLocation(_ location: NSPoint, in webView: InAppWebView) {
+    @objc private func handleDownloadLinkedFile(_ sender: NSMenuItem) {
+        guard let webView = webView,
+              let linkUrl = cachedLinkUrl,
+              !linkUrl.isEmpty,
+              let url = URL(string: linkUrl) else {
+            return
+        }
+        startDownload(url: url, webView: webView)
+    }
+    
+    private func fetchContextUrlsAtLocation(_ location: NSPoint, in webView: InAppWebView) {
         cachedImageUrl = nil
+        cachedLinkUrl = nil
         
         let viewHeight = webView.bounds.height
         let jsX = location.x
@@ -88,36 +119,48 @@ final class InAppWebViewContextMenuHandler {
         let script = """
         (function() {
             var findFunc = window.findElementsAtPoint || (window.flutter_inappwebview && window.flutter_inappwebview._findElementsAtPoint);
+            var urls = { image: null, link: null };
             if (findFunc) {
                 var result = findFunc(\(jsX), \(jsY));
-                if (result && result.imageUrl) {
-                    return result.imageUrl;
+                if (result) {
+                    if (result.imageUrl) urls.image = result.imageUrl;
+                    if (result.linkUrl) urls.link = result.linkUrl;
                 }
             }
-            // Fallback: try direct element lookup
-            var element = document.elementFromPoint(\(jsX), \(jsY));
-            while (element) {
-                if (element.tagName === 'IMG' && element.src) {
-                    return element.src;
+            if (!urls.image || !urls.link) {
+                var element = document.elementFromPoint(\(jsX), \(jsY));
+                var el = element;
+                while (el) {
+                    if (!urls.image && el.tagName === 'IMG' && el.src) {
+                        urls.image = el.src;
+                    }
+                    if (!urls.link && el.closest) {
+                        var a = el.closest('a[href]');
+                        if (a && a.href) {
+                            urls.link = a.href;
+                        }
+                    }
+                    if (urls.image && urls.link) break;
+                    el = el.parentElement;
                 }
-                element = element.parentElement;
-                if (element && element.tagName === 'IMG' && element.src) {
-                    return element.src;
-                }
-                break;
             }
-            return null;
+            return urls;
         })();
         """
         
         webView.evaluateJavaScript(script) { [weak self] result, error in
-            if let imageUrl = result as? String, !imageUrl.isEmpty {
-                self?.cachedImageUrl = imageUrl
+            if let dict = result as? [String: Any] {
+                if let img = dict["image"] as? String, !img.isEmpty {
+                    self?.cachedImageUrl = img
+                }
+                if let link = dict["link"] as? String, !link.isEmpty {
+                    self?.cachedLinkUrl = link
+                }
             }
         }
     }
     
-    private func startImageDownload(url: URL, webView: InAppWebView) {
+    private func startDownload(url: URL, webView: InAppWebView) {
         var request = URLRequest(url: url)
         
         if let userAgent = webView.customUserAgent {
